@@ -107,26 +107,32 @@ class SileroDriver(VADDriver):
             audio = np.interp(indices, np.arange(len(audio)), audio).astype(np.float32)
             log(f"Resampled audio: length={len(audio)}")
 
-        # Process in 512-sample chunks (32ms at 16kHz)
+        # Process in 512-sample chunks (32ms at 16kHz) with 64-sample context
         chunk_size = 512
+        context_size = 64  # silero-vad requires 64-sample context prefix
         segments: list[dict[str, float]] = []
         speech_frames: list[int] = []
         all_probs: list[float] = []
 
-        # Reset state for new audio
+        # Reset state and context for new audio
         self._state = np.zeros((2, 1, 128), dtype=np.float32)
+        context = np.zeros(context_size, dtype=np.float32)
 
-        log(f"Processing {len(audio)} samples in {chunk_size}-sample chunks...")
+        log(f"Processing {len(audio)} samples in {chunk_size}-sample chunks with {context_size}-sample context...")
         for i in range(0, len(audio) - chunk_size + 1, chunk_size):
-            chunk = audio[i : i + chunk_size].reshape(1, -1)
+            chunk = audio[i : i + chunk_size]
+            # Prepend context to chunk (required by silero-vad)
+            x = np.concatenate([context, chunk]).reshape(1, -1).astype(np.float32)
 
             try:
                 ort_inputs = {
-                    "input": chunk,
+                    "input": x,
                     "state": self._state,
                     "sr": self._sr,
                 }
                 output, self._state = self._session.run(None, ort_inputs)
+                # Save last context_size samples for next chunk
+                context = chunk[-context_size:]
                 prob = output[0][0]
                 all_probs.append(float(prob))
 
