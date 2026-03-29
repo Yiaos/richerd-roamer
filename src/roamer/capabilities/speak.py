@@ -1,7 +1,9 @@
 """Speak capability - voice output."""
 
 import os
+import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +34,59 @@ class SpeakCapability(Capability):
 
         # Audio capability for playback
         self._audio = AudioCapability(config)
+
+        # Bluetooth speaker config
+        bt_config = config.get("bluetooth", {})
+        self._bt_speaker_mac = bt_config.get("speaker_mac")
+
+    def _has_bluetooth_sink(self) -> bool:
+        """Check if a Bluetooth audio sink exists in PulseAudio."""
+        try:
+            result = subprocess.run(
+                ["pactl", "list", "sinks", "short"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            return "bluez_sink" in result.stdout
+        except Exception:
+            return False
+
+    def _ensure_bluetooth_connected(self, max_wait: float = 8.0) -> bool:
+        """Ensure Bluetooth speaker is connected.
+
+        Args:
+            max_wait: Maximum seconds to wait for connection
+
+        Returns:
+            True if Bluetooth sink is available
+        """
+        # Already have a sink?
+        if self._has_bluetooth_sink():
+            return True
+
+        # No MAC configured, can't auto-connect
+        if not self._bt_speaker_mac:
+            return False
+
+        # Try to connect
+        try:
+            subprocess.run(
+                ["bluetoothctl", "connect", self._bt_speaker_mac],
+                capture_output=True,
+                timeout=10,
+            )
+        except Exception:
+            return False
+
+        # Wait for sink to appear
+        start = time.time()
+        while time.time() - start < max_wait:
+            if self._has_bluetooth_sink():
+                return True
+            time.sleep(0.5)
+
+        return self._has_bluetooth_sink()
 
     def _create_temp_audio(self, prefix: str = "roamer_") -> str:
         """Create a secure temporary audio file.
@@ -75,6 +130,8 @@ class SpeakCapability(Capability):
             # Play if requested
             played = False
             if play:
+                # Ensure Bluetooth speaker is connected
+                self._ensure_bluetooth_connected()
                 play_result = self._audio.play(output)
                 played = play_result.get("ok", False)
 
