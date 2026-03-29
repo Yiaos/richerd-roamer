@@ -59,43 +59,64 @@ class ListenCapability(Capability):
         self,
         timeout: float = 10.0,
         save_audio: str | None = None,
+        debug: bool = False,
     ) -> dict[str, Any]:
         """Listen and transcribe speech.
 
         Args:
             timeout: Maximum recording duration in seconds
             save_audio: Optional path to save recorded audio
+            debug: Enable debug logging to stderr
 
         Returns:
             Result dict with text, confidence, duration_sec
         """
+        import sys
+
+        def log(msg: str) -> None:
+            if debug:
+                print(f"[listen] {msg}", file=sys.stderr)
+
         audio_path = save_audio if save_audio else self._create_temp_audio("roamer_rec_")
         trimmed_path = self._create_temp_audio("roamer_speech_")
         cleanup_audio = save_audio is None
 
         try:
             # Record audio
+            log(f"Recording for {timeout}s to {audio_path}")
             record_result = self._audio.record(duration=timeout, output=audio_path)
             if not record_result.get("ok"):
+                log(f"Recording failed: {record_result}")
                 return record_result
+
+            log(f"Recording complete: {record_result}")
 
             # Load audio for VAD
             try:
                 audio, sample_rate = self._load_wav(audio_path)
+                log(f"Loaded audio: shape={audio.shape}, sr={sample_rate}, "
+                    f"dtype={audio.dtype}")
+                log(f"Audio stats: min={audio.min():.4f}, max={audio.max():.4f}, "
+                    f"mean={audio.mean():.4f}, rms={np.sqrt((audio**2).mean()):.4f}")
             except Exception as e:
+                log(f"Failed to load audio: {e}")
                 return error("audio_load_failed", f"Failed to load audio: {e}")
 
             # Run VAD
-            vad_result = self._vad.detect(audio, sample_rate)
+            log("Running VAD...")
+            vad_result = self._vad.detect(audio, sample_rate, debug=debug)
+            log(f"VAD result: {vad_result}")
             if not vad_result.get("ok"):
                 return vad_result
 
             if not vad_result.get("speech_detected"):
+                log("No speech detected by VAD")
                 return error("vad_no_speech", "No speech detected in recording")
 
             # Get speech segments
             segments = vad_result.get("segments", [])
             if not segments:
+                log("No speech segments found")
                 return error("vad_no_speech", "No speech segments found")
 
             # Extract speech portion

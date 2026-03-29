@@ -54,24 +54,36 @@ class SileroDriver(VADDriver):
         except Exception:
             return False
 
-    def detect(self, audio: np.ndarray, sample_rate: int) -> dict[str, Any]:
+    def detect(
+        self, audio: np.ndarray, sample_rate: int, debug: bool = False
+    ) -> dict[str, Any]:
         """Detect speech segments in audio.
 
         Args:
             audio: Audio samples as numpy array (mono, float32, -1 to 1)
             sample_rate: Sample rate in Hz
+            debug: Enable debug logging to stderr
 
         Returns:
             Result dict with speech_detected, segments
         """
+        import sys
+
+        def log(msg: str) -> None:
+            if debug:
+                print(f"[vad] {msg}", file=sys.stderr)
+
         if not self._load_model():
             return error("vad_failed", "Failed to load VAD model")
 
         threshold = self.config.get("threshold", 0.5)
+        log(f"VAD threshold: {threshold}")
+        log(f"Input audio: shape={audio.shape}, dtype={audio.dtype}, sr={sample_rate}")
 
         # Ensure mono audio
         if len(audio.shape) > 1:
             audio = audio.mean(axis=1)
+            log(f"Converted to mono: shape={audio.shape}")
 
         # Ensure float32
         if audio.dtype != np.float32:
@@ -79,25 +91,31 @@ class SileroDriver(VADDriver):
 
         # Normalize if needed
         max_val = np.abs(audio).max()
+        log(f"Audio max abs value: {max_val:.4f}")
         if max_val > 1.0:
             audio = audio / max_val
+            log("Normalized audio to [-1, 1]")
 
         # Resample to 16kHz if needed
         if sample_rate != 16000:
+            log(f"Resampling from {sample_rate}Hz to 16000Hz")
             # Simple decimation/interpolation
             ratio = 16000 / sample_rate
             new_length = int(len(audio) * ratio)
             indices = np.linspace(0, len(audio) - 1, new_length)
             audio = np.interp(indices, np.arange(len(audio)), audio).astype(np.float32)
+            log(f"Resampled audio: length={len(audio)}")
 
         # Process in 512-sample chunks (32ms at 16kHz)
         chunk_size = 512
         segments: list[dict[str, float]] = []
         speech_frames: list[int] = []
+        all_probs: list[float] = []
 
         # Reset state for new audio
         self._state = np.zeros((2, 1, 128), dtype=np.float32)
 
+        log(f"Processing {len(audio)} samples in {chunk_size}-sample chunks...")
         for i in range(0, len(audio) - chunk_size + 1, chunk_size):
             chunk = audio[i : i + chunk_size].reshape(1, -1)
 
@@ -109,11 +127,23 @@ class SileroDriver(VADDriver):
                 }
                 output, self._state = self._session.run(None, ort_inputs)
                 prob = output[0][0]
+                all_probs.append(float(prob))
 
                 if prob > threshold:
                     speech_frames.append(i)
-            except Exception:
+            except Exception as e:
+                log(f"Chunk {i} error: {e}")
                 continue
+
+        # Log probability statistics
+        if all_probs:
+            probs_arr = np.array(all_probs)
+            log(f"Prob stats: min={probs_arr.min():.3f}, max={probs_arr.max():.3f}, "
+                f"mean={probs_arr.mean():.3f}")
+            log(f"Frames above threshold: {len(speech_frames)} / {len(all_probs)}")
+            # Log top 10 probabilities
+            top_probs = sorted(all_probs, reverse=True)[:10]
+            log(f"Top 10 probs: {[f'{p:.3f}' for p in top_probs]}")
 
         # Convert frames to segments
         if speech_frames:

@@ -61,13 +61,14 @@ def speak(ctx: click.Context, text: str, save: str | None, no_play: bool) -> Non
 @main.command()
 @click.option("--timeout", "-t", type=float, default=10.0, help="Listen timeout in seconds")
 @click.option("--save-audio", type=click.Path(), help="Save recorded audio to file")
+@click.option("--debug", is_flag=True, help="Enable debug logging")
 @click.pass_context
-def listen(ctx: click.Context, timeout: float, save_audio: str | None) -> None:
+def listen(ctx: click.Context, timeout: float, save_audio: str | None, debug: bool) -> None:
     """Listen and transcribe speech (voice input)."""
     from roamer.capabilities.listen import ListenCapability
 
     cap = ListenCapability(ctx.obj["config"])
-    result = cap.listen(timeout=timeout, save_audio=save_audio)
+    result = cap.listen(timeout=timeout, save_audio=save_audio, debug=debug)
     output_json(result)
 
 
