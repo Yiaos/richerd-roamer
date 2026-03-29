@@ -1,4 +1,4 @@
-"""Tests for camera driver and capability."""
+"""Tests for watch capability and camera driver."""
 
 from unittest.mock import MagicMock, patch
 
@@ -78,7 +78,6 @@ class TestFswebcamDriver:
                     mock_stat.return_value = MagicMock(st_size=1000)
                     driver.snap("/tmp/test.jpg", 640, 480)
 
-        # Check that -d /dev/video1 was passed
         call_args = mock_run.call_args[0][0]
         assert "-d" in call_args
         device_idx = call_args.index("-d")
@@ -86,7 +85,7 @@ class TestFswebcamDriver:
 
 
 @pytest.mark.hardware
-class TestCameraHardware:
+class TestWatchHardware:
     """Hardware tests - require actual camera."""
 
     def test_snap_real_hardware(self):

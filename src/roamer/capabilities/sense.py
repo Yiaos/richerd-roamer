@@ -1,4 +1,4 @@
-"""System status capability."""
+"""Sense capability - self-state perception."""
 
 import os
 import socket
@@ -10,8 +10,8 @@ from roamer.capabilities.base import Capability
 from roamer.output import success
 
 
-class SystemCapability(Capability):
-    """System status capability."""
+class SenseCapability(Capability):
+    """Sense capability - perceive self-state and environment."""
 
     def status(self, full: bool = False) -> dict[str, Any]:
         """Get system status.
@@ -52,7 +52,6 @@ class SystemCapability(Capability):
     def _get_cpu_percent(self) -> float | None:
         """Get CPU usage percentage."""
         try:
-            # Read /proc/stat
             with open("/proc/stat") as f:
                 line = f.readline()
 
@@ -60,7 +59,6 @@ class SystemCapability(Capability):
             if parts[0] != "cpu":
                 return None
 
-            # user, nice, system, idle, iowait, irq, softirq
             user = int(parts[1])
             nice = int(parts[2])
             system = int(parts[3])
@@ -97,7 +95,6 @@ class SystemCapability(Capability):
 
     def _get_temperature(self) -> float | None:
         """Get CPU temperature in Celsius."""
-        # Try Raspberry Pi thermal zone
         thermal_paths = [
             "/sys/class/thermal/thermal_zone0/temp",
             "/sys/devices/virtual/thermal/thermal_zone0/temp",
@@ -134,12 +131,10 @@ class SystemCapability(Capability):
         """Get network information."""
         info: dict[str, Any] = {}
 
-        # Wi-Fi info
         wifi_info = self._get_wifi_info()
         if wifi_info:
             info.update(wifi_info)
 
-        # Tailscale info
         tailscale_ip = self._get_tailscale_ip()
         if tailscale_ip:
             info["tailscale_ip"] = tailscale_ip
@@ -149,7 +144,6 @@ class SystemCapability(Capability):
     def _get_wifi_info(self) -> dict[str, Any] | None:
         """Get Wi-Fi connection information."""
         try:
-            # Get SSID
             result = subprocess.run(
                 ["iwgetid", "-r"],
                 capture_output=True,
@@ -160,7 +154,6 @@ class SystemCapability(Capability):
                 if ssid:
                     info: dict[str, Any] = {"wifi_ssid": ssid}
 
-                    # Get signal strength
                     signal = self._get_wifi_signal()
                     if signal is not None:
                         info["wifi_signal_dbm"] = signal
@@ -177,10 +170,9 @@ class SystemCapability(Capability):
             with open("/proc/net/wireless") as f:
                 lines = f.readlines()
 
-            for line in lines[2:]:  # Skip headers
+            for line in lines[2:]:
                 parts = line.split()
                 if len(parts) >= 4:
-                    # Signal level is in position 3
                     signal = int(float(parts[3]))
                     return signal
         except Exception:

@@ -1,4 +1,4 @@
-"""Speech capability - TTS, VAD, ASR integration."""
+"""Listen capability - voice input and speech recognition."""
 
 import os
 import tempfile
@@ -10,28 +10,23 @@ import numpy as np
 
 # Import drivers to register them
 import roamer.drivers.speech  # noqa: F401
-from roamer.capabilities.audio import AudioCapability
+from roamer.capabilities._audio import AudioCapability
 from roamer.capabilities.base import Capability
 from roamer.config import get_driver_config, get_driver_name
 from roamer.drivers.registry import get_driver
 from roamer.output import error, success
 
 
-class SpeechCapability(Capability):
-    """Speech capability - TTS, VAD, and ASR."""
+class ListenCapability(Capability):
+    """Listen capability - voice input with VAD and ASR."""
 
     def __init__(self, config: dict[str, Any]):
-        """Initialize speech capability.
+        """Initialize listen capability.
 
         Args:
             config: Full configuration dictionary
         """
         super().__init__(config)
-
-        # Load TTS driver
-        tts_name = get_driver_name(config, "tts")
-        tts_config = get_driver_config(config, tts_name)
-        self._tts = get_driver("tts", tts_name, tts_config)
 
         # Load VAD driver
         vad_name = get_driver_name(config, "vad")
@@ -43,7 +38,7 @@ class SpeechCapability(Capability):
         asr_config = get_driver_config(config, asr_name)
         self._asr = get_driver("asr", asr_name, asr_config)
 
-        # Audio capability for recording/playback
+        # Audio capability for recording
         self._audio = AudioCapability(config)
 
     def _create_temp_audio(self, prefix: str = "roamer_") -> str:
@@ -57,55 +52,8 @@ class SpeechCapability(Capability):
         """
         fd, path = tempfile.mkstemp(suffix=".wav", prefix=prefix)
         os.close(fd)
-        # Set restrictive permissions (owner read/write only)
         os.chmod(path, 0o600)
         return path
-
-    def speak(
-        self,
-        text: str,
-        save_path: str | None = None,
-        play: bool = True,
-    ) -> dict[str, Any]:
-        """Text to speech.
-
-        Args:
-            text: Text to speak
-            save_path: Optional path to save audio
-            play: Whether to play the audio
-
-        Returns:
-            Result dict with text, audio_path, duration_sec, played
-        """
-        # Generate output path
-        output = save_path if save_path else self._create_temp_audio("roamer_tts_")
-        cleanup_output = save_path is None
-
-        try:
-            # Synthesize
-            tts_result = self._tts.synthesize(text, output)
-            if not tts_result.get("ok"):
-                return tts_result
-
-            # Play if requested
-            played = False
-            if play:
-                play_result = self._audio.play(output)
-                played = play_result.get("ok", False)
-
-            return success(
-                text=text,
-                audio_path=output if save_path else None,
-                duration_sec=tts_result.get("duration_sec"),
-                played=played,
-            )
-        finally:
-            # Clean up temp file if not saving
-            if cleanup_output and not save_path:
-                try:
-                    Path(output).unlink(missing_ok=True)
-                except Exception:
-                    pass
 
     def listen(
         self,
@@ -121,7 +69,6 @@ class SpeechCapability(Capability):
         Returns:
             Result dict with text, confidence, duration_sec
         """
-        # Create audio paths
         audio_path = save_audio if save_audio else self._create_temp_audio("roamer_rec_")
         trimmed_path = self._create_temp_audio("roamer_speech_")
         cleanup_audio = save_audio is None
@@ -155,7 +102,6 @@ class SpeechCapability(Capability):
             start_time = segments[0]["start"]
             end_time = segments[-1]["end"]
 
-            # Trim audio to speech portion
             start_sample = int(start_time * sample_rate)
             end_sample = int(end_time * sample_rate)
             speech_audio = audio[start_sample:end_sample]
@@ -178,7 +124,6 @@ class SpeechCapability(Capability):
                 audio_path=audio_path if save_audio else None,
             )
         finally:
-            # Clean up temp files
             try:
                 Path(trimmed_path).unlink(missing_ok=True)
             except Exception:
@@ -206,7 +151,6 @@ class SpeechCapability(Capability):
 
             raw_data = wf.readframes(n_frames)
 
-            # Convert to numpy
             if sample_width == 2:
                 audio = np.frombuffer(raw_data, dtype=np.int16)
             elif sample_width == 4:
@@ -214,7 +158,6 @@ class SpeechCapability(Capability):
             else:
                 audio = np.frombuffer(raw_data, dtype=np.uint8)
 
-            # Convert to float32 normalized
             audio = audio.astype(np.float32)
             if sample_width == 2:
                 audio /= 32768.0
@@ -223,7 +166,6 @@ class SpeechCapability(Capability):
             else:
                 audio = (audio - 128.0) / 128.0
 
-            # Convert stereo to mono
             if n_channels > 1:
                 audio = audio.reshape(-1, n_channels).mean(axis=1)
 
@@ -237,7 +179,6 @@ class SpeechCapability(Capability):
             audio: Audio samples (float32, -1 to 1)
             sample_rate: Sample rate
         """
-        # Convert to int16
         audio_int16 = (audio * 32767).astype(np.int16)
 
         with wave.open(path, "wb") as wf:

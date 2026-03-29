@@ -1,16 +1,16 @@
-"""Tests for system status capability."""
+"""Tests for sense capability."""
 
 from unittest.mock import MagicMock, mock_open, patch
 
-from roamer.capabilities.system import SystemCapability
+from roamer.capabilities.sense import SenseCapability
 
 
-class TestSystemCapability:
-    """Tests for SystemCapability."""
+class TestSenseCapability:
+    """Tests for SenseCapability."""
 
     def test_status_basic(self):
         """Test basic status output."""
-        cap = SystemCapability({})
+        cap = SenseCapability({})
 
         with patch.object(cap, "_get_hostname", return_value="roamer"):
             with patch.object(cap, "_get_uptime", return_value=3600.0):
@@ -29,7 +29,7 @@ class TestSystemCapability:
 
     def test_status_full_with_hardware(self):
         """Test full status with hardware checks."""
-        cap = SystemCapability({})
+        cap = SenseCapability({})
 
         with patch.object(cap, "_get_hostname", return_value="roamer"):
             with patch.object(cap, "_get_uptime", return_value=3600.0):
@@ -53,7 +53,7 @@ class TestSystemCapability:
 
     def test_get_uptime(self):
         """Test uptime reading."""
-        cap = SystemCapability({})
+        cap = SenseCapability({})
 
         mock_data = "12345.67 23456.78\n"
         with patch("builtins.open", mock_open(read_data=mock_data)):
@@ -63,7 +63,7 @@ class TestSystemCapability:
 
     def test_get_memory_info(self):
         """Test memory info parsing."""
-        cap = SystemCapability({})
+        cap = SenseCapability({})
 
         mock_data = """MemTotal:        8000000 kB
 MemFree:         1000000 kB
@@ -72,14 +72,14 @@ MemAvailable:    6000000 kB
         with patch("builtins.open", mock_open(read_data=mock_data)):
             info = cap._get_memory_info()
 
-        assert info["total_mb"] == 7812  # 8000000 / 1024
-        assert info["available_mb"] == 5859  # 6000000 / 1024
+        assert info["total_mb"] == 7812
+        assert info["available_mb"] == 5859
         assert "used_mb" in info
         assert "percent" in info
 
     def test_get_temperature(self):
         """Test temperature reading."""
-        cap = SystemCapability({})
+        cap = SenseCapability({})
 
         with patch("builtins.open", mock_open(read_data="45000\n")):
             temp = cap._get_temperature()
@@ -88,7 +88,7 @@ MemAvailable:    6000000 kB
 
     def test_get_disk_info(self):
         """Test disk info."""
-        cap = SystemCapability({})
+        cap = SenseCapability({})
 
         mock_stat = MagicMock()
         mock_stat.f_blocks = 1000000
@@ -105,7 +105,7 @@ MemAvailable:    6000000 kB
 
     def test_check_camera(self):
         """Test camera check."""
-        cap = SystemCapability({})
+        cap = SenseCapability({})
 
         with patch("pathlib.Path.exists", return_value=True):
             assert cap._check_camera() is True
@@ -115,7 +115,7 @@ MemAvailable:    6000000 kB
 
     def test_check_microphone(self):
         """Test microphone check."""
-        cap = SystemCapability({})
+        cap = SenseCapability({})
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(stdout=b"card 2: Camera [Rapoo Camera]")
@@ -127,7 +127,7 @@ MemAvailable:    6000000 kB
 
     def test_get_tailscale_ip(self):
         """Test Tailscale IP retrieval."""
-        cap = SystemCapability({})
+        cap = SenseCapability({})
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(

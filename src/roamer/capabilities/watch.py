@@ -1,4 +1,4 @@
-"""Camera capability."""
+"""Watch capability - visual perception."""
 
 from datetime import datetime
 from typing import Any
@@ -10,11 +10,11 @@ from roamer.config import get_driver_config, get_driver_name
 from roamer.drivers.registry import get_driver
 
 
-class CameraCapability(Capability):
-    """Camera capability - capture images."""
+class WatchCapability(Capability):
+    """Watch capability - capture images and visual perception."""
 
     def __init__(self, config: dict[str, Any]):
-        """Initialize camera capability.
+        """Initialize watch capability.
 
         Args:
             config: Full configuration dictionary
