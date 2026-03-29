@@ -49,8 +49,8 @@ class SileroDriver(VADDriver):
             )
             # Initialize state for silero-vad
             self._state = np.zeros((2, 1, 128), dtype=np.float32)
-            # sr should be a scalar, not 1D array
-            self._sr = np.int64(16000)
+            # sr should be 0-dim array (scalar)
+            self._sr = np.array(16000, dtype=np.int64)
             return True
         except Exception:
             return False
