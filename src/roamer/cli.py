@@ -24,6 +24,11 @@ def output_json(data: dict) -> None:
 def main(ctx: click.Context, config: Path | None) -> None:
     """Roamer - Richerd's physical body CLI."""
     ctx.ensure_object(dict)
+    # Use default config path if not specified
+    if config is None:
+        default_config = Path.home() / ".config" / "roamer" / "config.yaml"
+        if default_config.exists():
+            config = default_config
     ctx.obj["config"] = load_config(config)
 
 
