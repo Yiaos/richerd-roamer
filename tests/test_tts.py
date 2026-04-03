@@ -60,6 +60,22 @@ class TestPiperDriver:
         assert result["ok"] is False
         assert result["error"] == "tts_failed"
 
+    def test_synthesize_ignores_style(self):
+        """Test style parameter is accepted and ignored for Piper."""
+        driver = PiperDriver({
+            "binary": "/usr/bin/piper",
+            "model": "/models/zh.onnx",
+        })
+
+        with patch("pathlib.Path.exists", return_value=True):
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0)
+                with patch.object(driver, "_get_wav_duration", return_value=1.5):
+                    result = driver.synthesize("测试", "/tmp/test.wav", style="cheerful")
+
+        assert result["ok"] is True
+        assert result["text"] == "测试"
+
 
 @pytest.mark.hardware
 class TestTTSHardware:
@@ -169,6 +185,37 @@ class TestEdgeDriver:
         assert "en-US-AriaNeural" in call_args
         assert "--rate" in call_args
         assert "+20%" in call_args
+
+    def test_synthesize_with_valid_style_uses_ssml(self):
+        """Test valid style switches Edge TTS to SSML mode."""
+        driver = EdgeDriver({"voice": "zh-CN-YunxiNeural"})
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            with patch("pathlib.Path.exists", return_value=True):
+                with patch.object(driver, "_get_audio_duration", return_value=2.5):
+                    result = driver.synthesize("测试", "/tmp/test.mp3", style="cheerful")
+
+        call_args = mock_run.call_args[0][0]
+        assert "--ssml" in call_args
+        assert "--text" not in call_args
+        assert "mstts:express-as style='cheerful'" in call_args[call_args.index("--ssml") + 1]
+        assert result["style"] == "cheerful"
+
+    def test_synthesize_with_invalid_style_falls_back_to_text(self):
+        """Test invalid style falls back to plain text synthesis."""
+        driver = EdgeDriver({"voice": "zh-CN-YunxiNeural"})
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            with patch("pathlib.Path.exists", return_value=True):
+                with patch.object(driver, "_get_audio_duration", return_value=2.5):
+                    result = driver.synthesize("测试", "/tmp/test.mp3", style="invalid")
+
+        call_args = mock_run.call_args[0][0]
+        assert "--text" in call_args
+        assert "--ssml" not in call_args
+        assert result["style"] == "invalid"
 
 
 @pytest.mark.hardware

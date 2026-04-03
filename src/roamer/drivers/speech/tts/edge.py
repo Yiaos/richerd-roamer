@@ -9,16 +9,30 @@ from roamer.drivers.registry import register_driver
 from roamer.drivers.speech.tts.base import TTSDriver
 from roamer.output import error, success
 
+VALID_STYLES = {
+    "cheerful",
+    "sad",
+    "angry",
+    "fearful",
+    "disgruntled",
+    "serious",
+    "depressed",
+    "embarrassed",
+    "gentle",
+    "lyrical",
+}
+
 
 class EdgeDriver(TTSDriver):
     """TTS driver using Edge TTS (Microsoft cloud voices)."""
 
-    def synthesize(self, text: str, output: str) -> dict[str, Any]:
+    def synthesize(self, text: str, output: str, style: str | None = None) -> dict[str, Any]:
         """Synthesize speech using Edge TTS.
 
         Args:
             text: Text to synthesize
             output: Output audio file path (.mp3 or .wav)
+            style: Optional emotional expression style
 
         Returns:
             Result dict
@@ -37,12 +51,24 @@ class EdgeDriver(TTSDriver):
         else:
             mp3_output = output_path
 
+        if style and style in VALID_STYLES:
+            content = (
+                "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' "
+                "xmlns:mstts='http://www.w3.org/2001/mstts' xml:lang='zh-CN'>"
+                f"<voice name='{voice}'>"
+                f"<mstts:express-as style='{style}'>{text}</mstts:express-as>"
+                "</voice></speak>"
+            )
+            text_arg = ["--ssml", content]
+        else:
+            text_arg = ["--text", text]
+
         cmd = [
             "edge-tts",
             "--voice", voice,
             "--rate", rate,
             "--volume", volume,
-            "--text", text,
+            *text_arg,
             "--write-media", str(mp3_output),
         ]
 
@@ -81,6 +107,7 @@ class EdgeDriver(TTSDriver):
             text=text,
             duration_sec=duration,
             voice=voice,
+            style=style,
         )
 
     def _convert_mp3_to_wav(self, mp3_path: str, wav_path: str) -> dict[str, Any]:

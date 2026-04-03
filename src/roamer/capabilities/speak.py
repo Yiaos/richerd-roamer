@@ -107,6 +107,7 @@ class SpeakCapability(Capability):
         text: str,
         save_path: str | None = None,
         play: bool = True,
+        style: str | None = None,
     ) -> dict[str, Any]:
         """Text to speech.
 
@@ -114,6 +115,7 @@ class SpeakCapability(Capability):
             text: Text to speak
             save_path: Optional path to save audio
             play: Whether to play the audio
+            style: Optional emotional expression style
 
         Returns:
             Result dict with text, audio_path, duration_sec, played
@@ -123,7 +125,7 @@ class SpeakCapability(Capability):
 
         try:
             # Synthesize
-            tts_result = self._tts.synthesize(text, output)
+            tts_result = self._tts.synthesize(text, output, style=style)
             if not tts_result.get("ok"):
                 return tts_result
 

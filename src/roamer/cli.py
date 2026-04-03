@@ -50,15 +50,22 @@ def watch(ctx: click.Context, output: str | None, width: int, height: int) -> No
 # Speak - voice output
 @main.command()
 @click.argument("text")
-@click.option("--save", "-s", type=click.Path(), help="Save audio to file")
+@click.option("--save", type=click.Path(), help="Save audio to file")
+@click.option(
+    "--style",
+    "-s",
+    type=str,
+    default=None,
+    help="Emotional style (cheerful/sad/angry/fearful/disgruntled/serious/depressed/embarrassed/gentle/lyrical)",
+)
 @click.option("--no-play", is_flag=True, help="Don't play audio, just synthesize")
 @click.pass_context
-def speak(ctx: click.Context, text: str, save: str | None, no_play: bool) -> None:
+def speak(ctx: click.Context, text: str, save: str | None, style: str | None, no_play: bool) -> None:
     """Text to speech (voice output)."""
     from roamer.capabilities.speak import SpeakCapability
 
     cap = SpeakCapability(ctx.obj["config"])
-    result = cap.speak(text, save_path=save, play=not no_play)
+    result = cap.speak(text, save_path=save, play=not no_play, style=style)
     output_json(result)
 
 
