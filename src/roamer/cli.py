@@ -49,23 +49,45 @@ def watch(ctx: click.Context, output: str | None, width: int, height: int) -> No
 
 # Speak - voice output
 @main.command()
-@click.argument("text")
+@click.argument("text", required=False)
+@click.option("--stdin", "from_stdin", is_flag=True, help="Read text from stdin")
+@click.option("--prefix", type=str, default="", help="Prefix to prepend to the text")
 @click.option("--save", type=click.Path(), help="Save audio to file")
 @click.option(
     "--style",
     "-s",
     type=str,
     default=None,
-    help="Emotional style (cheerful/sad/angry/fearful/disgruntled/serious/depressed/embarrassed/gentle/lyrical)",
+    help=(
+        "Emotional style "
+        "(cheerful/sad/angry/fearful/disgruntled/serious/depressed/embarrassed/gentle/lyrical)"
+    ),
 )
 @click.option("--no-play", is_flag=True, help="Don't play audio, just synthesize")
 @click.pass_context
-def speak(ctx: click.Context, text: str, save: str | None, style: str | None, no_play: bool) -> None:
+def speak(
+    ctx: click.Context,
+    text: str | None,
+    from_stdin: bool,
+    prefix: str,
+    save: str | None,
+    style: str | None,
+    no_play: bool,
+) -> None:
     """Text to speech (voice output)."""
     from roamer.capabilities.speak import SpeakCapability
 
+    if from_stdin and text is not None:
+        raise click.UsageError("Cannot provide TEXT argument when using --stdin")
+
+    input_text = click.get_text_stream("stdin").read().strip() if from_stdin else (text or "")
+    speak_text = f"{prefix}{input_text}"
+
+    if not speak_text:
+        raise click.UsageError("No text provided. Use TEXT argument or --stdin.")
+
     cap = SpeakCapability(ctx.obj["config"])
-    result = cap.speak(text, save_path=save, play=not no_play, style=style)
+    result = cap.speak(speak_text, save_path=save, play=not no_play, style=style)
     output_json(result)
 
 
@@ -74,13 +96,29 @@ def speak(ctx: click.Context, text: str, save: str | None, style: str | None, no
 @click.option("--timeout", "-t", type=float, default=10.0, help="Listen timeout in seconds")
 @click.option("--save-audio", type=click.Path(), help="Save recorded audio to file")
 @click.option("--debug", is_flag=True, help="Enable debug logging")
+@click.option("--text-only", is_flag=True, help="Output transcribed text only")
 @click.pass_context
-def listen(ctx: click.Context, timeout: float, save_audio: str | None, debug: bool) -> None:
+def listen(
+    ctx: click.Context,
+    timeout: float,
+    save_audio: str | None,
+    debug: bool,
+    text_only: bool,
+) -> None:
     """Listen and transcribe speech (voice input)."""
     from roamer.capabilities.listen import ListenCapability
 
     cap = ListenCapability(ctx.obj["config"])
     result = cap.listen(timeout=timeout, save_audio=save_audio, debug=debug)
+
+    if text_only:
+        if result.get("ok"):
+            click.echo(result.get("text", ""))
+            return
+
+        click.echo(json.dumps(result, ensure_ascii=False), err=True)
+        ctx.exit(1)
+
     output_json(result)
 
 

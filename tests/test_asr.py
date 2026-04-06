@@ -64,6 +64,27 @@ class TestFunASRDriver:
         assert result["ok"] is False
         assert result["error"] == "asr_failed"
 
+    def test_transcribe_redirects_noisy_stdout_to_stderr(self, capsys):
+        """Test that noisy ASR stdout is redirected away from CLI stdout."""
+        driver = FunASRDriver({"model": "paraformer-zh"})
+
+        mock_model = MagicMock()
+
+        def noisy_generate(**kwargs):
+            print("funasr noisy banner")
+            return [{"text": "你好世界", "confidence": 0.88}]
+
+        mock_model.generate.side_effect = noisy_generate
+
+        with patch("pathlib.Path.exists", return_value=True):
+            driver._model = mock_model
+            result = driver.transcribe("/tmp/test.wav")
+
+        captured = capsys.readouterr()
+        assert result["ok"] is True
+        assert "funasr noisy banner" not in captured.out
+        assert "funasr noisy banner" in captured.err
+
     def test_load_model_import_error(self):
         """Test when funasr not installed."""
         driver = FunASRDriver({"model": "paraformer-zh"})

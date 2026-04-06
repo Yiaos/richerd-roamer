@@ -1,5 +1,7 @@
 """FunASR speech recognition driver."""
 
+import contextlib
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +39,8 @@ class FunASRDriver(ASRDriver):
         model_name = self.config.get("model", "paraformer-zh-streaming")
 
         try:
-            self._model = AutoModel(model=model_name)
+            with contextlib.redirect_stdout(sys.stderr):
+                self._model = AutoModel(model=model_name)
             return True
         except Exception:
             return False
@@ -58,7 +61,8 @@ class FunASRDriver(ASRDriver):
             return error("asr_failed", "Failed to load ASR model")
 
         try:
-            result = self._model.generate(input=audio_path)
+            with contextlib.redirect_stdout(sys.stderr):
+                result = self._model.generate(input=audio_path)
         except Exception as e:
             return error("asr_failed", str(e))
 
