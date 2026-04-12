@@ -103,14 +103,18 @@ It explicitly does **not** mean full teleop/path planning/NL navigation in the f
 ## Architecture
 
 ```
-CLI Layer (cli.py)
+CLI Layer (cli/)
     ↓
-Capability Layer (capabilities/)
+Platform Runtime (platform/)
     ↓
-Driver Layer (drivers/)
+Domain Plugins (plugins/perception, plugins/interaction)
+    ↓
+Plugin-local Capabilities and Drivers
 ```
 
-Drivers are swappable via configuration.
+`domains/` stores semantic contracts only; implementations live in `plugins/`
+
+Plugins expose actions through registry dispatch; command handlers stay thin and contract-focused.
 
 ## Docs
 
