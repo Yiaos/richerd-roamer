@@ -16,7 +16,7 @@ speech = ["torch>=2.0", "torchaudio>=2.0", "funasr>=1.0", "onnxruntime>=1.15"]
 dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.1"]
 
 [project.scripts]
-roamer = "roamer.cli:main"
+roamer = "roamer.cli.main:main"
 
 [build-system]
 requires = ["hatchling"]
