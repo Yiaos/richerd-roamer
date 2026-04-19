@@ -54,6 +54,36 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "bluetooth": {
         "speaker_mac": None,
     },
+    "converse": {
+        "enabled": True,
+        "silence_timeout": 8.0,
+        "max_turns": 10,
+        "no_sound_default": False,
+        "wakeword": {
+            "enabled": True,
+            "driver": "openwakeword",
+            "model": "",
+            "threshold": 0.5,
+            "prompt_sound": True,
+        },
+        "intents": [
+            {"name": "time_now", "action": "time.now", "patterns": ["现在几点", "几点了"]},
+            {"name": "status", "action": "sense", "patterns": ["你在哪", "状态"]},
+            {"name": "watch", "action": "watch", "patterns": ["看一下", "拍张照"]},
+            {"name": "go_home", "action": "motion.home", "patterns": ["回家", "回充电"]},
+            {
+                "name": "position",
+                "action": "motion.position",
+                "patterns": ["你在哪个位置", "当前位置"],
+            },
+        ],
+        "discord": {
+            "enabled": False,
+            "channel_id": "",
+            "token_env": "DISCORD_BOT_TOKEN",
+            "source": "roamer",
+        },
+    },
 }
 
 

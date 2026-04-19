@@ -59,6 +59,7 @@ def _ensure_interaction_plugin_registered(config: dict) -> None:
     for action_name in (
         "listen",
         "speak",
+        "converse",
         "audio.record",
         "audio.play",
         "bt.status",
@@ -185,6 +186,49 @@ def listen(
         debug=debug,
     )
     emit_contract_result(ctx, "listen", result, text_only=text_only)
+
+
+# Converse - voice wake + dialog loop
+@main.command()
+@click.option("--no-wakeword", is_flag=True, help="Disable wakeword and start listening immediately")
+@click.option("--timeout", "silence_timeout", type=float, default=None, help="Silence timeout in seconds")
+@click.option("--no-sound", is_flag=True, help="Disable prompt/ding sound")
+@click.option("--max-turns", type=click.IntRange(1), default=None, help="Maximum turns before exiting")
+@click.pass_context
+def converse(
+    ctx: click.Context,
+    no_wakeword: bool,
+    silence_timeout: float | None,
+    no_sound: bool,
+    max_turns: int | None,
+) -> None:
+    """Run converse loop (wakeword + continuous conversation)."""
+    config = ctx.obj["config"]
+    converse_config = config.get("converse", {})
+    wakeword_enabled = bool(converse_config.get("wakeword", {}).get("enabled", True))
+
+    effective_no_wakeword = no_wakeword or not wakeword_enabled
+    effective_timeout = (
+        float(silence_timeout)
+        if silence_timeout is not None
+        else float(converse_config.get("silence_timeout", 8.0))
+    )
+    effective_no_sound = bool(no_sound or converse_config.get("no_sound_default", False))
+    effective_max_turns = (
+        int(max_turns)
+        if max_turns is not None
+        else int(converse_config.get("max_turns", 10))
+    )
+
+    _ensure_interaction_plugin_registered(config)
+    result = run_action(
+        "converse",
+        no_wakeword=effective_no_wakeword,
+        timeout=effective_timeout,
+        no_sound=effective_no_sound,
+        max_turns=effective_max_turns,
+    )
+    emit_contract_result(ctx, "converse", result)
 
 
 # Sense - self-state perception

@@ -3,11 +3,14 @@
 from collections.abc import Callable
 from typing import Any
 
+from roamer.platform.contract import ErrorCode
+from roamer.platform.output import error
 from roamer.platform.plugin_registry import PluginRegistry
 from roamer.plugins.interaction.actions.audio_play import AudioPlayAction
 from roamer.plugins.interaction.actions.audio_record import AudioRecordAction
 from roamer.plugins.interaction.actions.bt_connect import BtConnectAction
 from roamer.plugins.interaction.actions.bt_status import BtStatusAction
+from roamer.plugins.interaction.actions.converse import ConverseAction
 from roamer.plugins.interaction.actions.listen import ListenAction
 from roamer.plugins.interaction.actions.speak import SpeakAction
 from roamer.plugins.interaction.capabilities.init import InitCapability
@@ -20,7 +23,14 @@ def _lazy_runner(
     """Create a lazy action runner to avoid eager plugin-side initialization."""
 
     def _run(**kwargs: Any) -> dict[str, Any]:
-        return action_cls(config).run(**kwargs)
+        try:
+            return action_cls(config).run(**kwargs)
+        except ValueError as exc:
+            return error(
+                "config_invalid",
+                str(exc),
+                error_code=ErrorCode.CONFIG_INVALID,
+            )
 
     return _run
 
@@ -29,6 +39,7 @@ def register(registry: PluginRegistry, config: dict[str, Any]) -> None:
     """Register interaction actions into plugin registry."""
     registry.register("listen", _lazy_runner(ListenAction, config))
     registry.register("speak", _lazy_runner(SpeakAction, config))
+    registry.register("converse", _lazy_runner(ConverseAction, config))
     registry.register("audio.record", _lazy_runner(AudioRecordAction, config))
     registry.register("audio.play", _lazy_runner(AudioPlayAction, config))
     registry.register("bt.status", _lazy_runner(BtStatusAction, config))
