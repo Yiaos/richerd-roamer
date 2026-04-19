@@ -65,6 +65,16 @@ def _cfg() -> dict:
     return {"host": "10.0.0.100", "port": 80, "timeout_sec": 8.0}
 
 
+def test_driver_requires_injected_urlopen_in_unit_tests() -> None:
+    driver = ValetudoMotionDriver(_cfg())
+
+    try:
+        _ = driver.get_status()
+        assert False, "Expected safety guard to block real urlopen"
+    except AssertionError as exc:
+        assert "Unexpected real HTTP call in motion unit test" in str(exc)
+
+
 def test_get_status_parses_state_fields() -> None:
     driver = ValetudoMotionDriver(
         _cfg(),
