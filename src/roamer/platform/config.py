@@ -47,6 +47,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "host": "10.0.0.100",
         "port": 80,
     },
+    "motion": {
+        "wait_timeout_sec": 300,
+        "poll_interval_sec": 2,
+        "arrival_tolerance": 150,
+    },
     "bluetooth": {
         "speaker_mac": None,
     },

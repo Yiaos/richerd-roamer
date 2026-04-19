@@ -24,12 +24,13 @@ def test_legacy_map_keys_present():
     assert expected_keys.issubset(set(LEGACY_ERROR_MAP))
 
 
-def test_motion_namespace_reserved_for_phase_4_5():
-    """Motion namespace codes are reserved before motion commands ship."""
+def test_motion_namespace_codes_are_stable():
+    """Motion namespace codes should remain backward compatible."""
     assert ErrorCode.MOTION_STATUS_UNSUPPORTED.value == "motion.status.unsupported"
     assert ErrorCode.MOTION_POSITION_UNAVAILABLE.value == "motion.position.unavailable"
     assert ErrorCode.MOTION_GOTO_GUARD_FAILED.value == "motion.goto.guard_failed"
     assert ErrorCode.MOTION_GOTO_TIMEOUT.value == "motion.goto.timeout"
+    assert ErrorCode.MOTION_HOME_TIMEOUT.value == "motion.home.timeout"
 
 
 def test_timeout_codes_map_to_timeout_exit_category():
@@ -42,6 +43,7 @@ def test_timeout_codes_map_to_timeout_exit_category():
         ErrorCode.BLUETOOTH_CONNECT_TIMEOUT.value,
         ErrorCode.BLUETOOTH_DISCONNECT_TIMEOUT.value,
         ErrorCode.MOTION_GOTO_TIMEOUT.value,
+        ErrorCode.MOTION_HOME_TIMEOUT.value,
     }
     for code in timeout_codes:
         assert ERROR_EXIT_CATEGORY[code] == ExitCategory.TIMEOUT
