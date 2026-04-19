@@ -42,6 +42,25 @@ def test_motion_goto_wait_dispatches_run_action(monkeypatch) -> None:
     assert '"command": "motion.goto"' in result.output
 
 
+def test_motion_goto_with_angle_dispatches_run_action(monkeypatch) -> None:
+    called = {}
+
+    def _fake_run(action_name, **kwargs):
+        called["action_name"] = action_name
+        called["kwargs"] = kwargs
+        return {"ok": True, "accepted": True, "waiting": False}
+
+    monkeypatch.setattr("roamer.cli.main.run_action", _fake_run)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["motion", "goto", "--x", "100", "--y", "200", "--angle", "277"])
+
+    assert result.exit_code == 0
+    assert called["action_name"] == "motion.goto"
+    assert called["kwargs"] == {"x": 100, "y": 200, "angle": 277, "wait": False}
+    assert '"command": "motion.goto"' in result.output
+
+
 def test_motion_home_wait_dispatches_run_action(monkeypatch) -> None:
     called = {}
 

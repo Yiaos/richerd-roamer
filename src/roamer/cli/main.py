@@ -82,6 +82,11 @@ def _ensure_motion_plugin_registered(config: dict) -> None:
     register_motion_plugin(registry, config)
 
 
+def _default_repo_config_path() -> Path:
+    """Return default repo-local config path (project root/config.yaml)."""
+    return Path(__file__).resolve().parents[3] / "config.yaml"
+
+
 @click.group()
 @click.option(
     "--config",
@@ -93,9 +98,9 @@ def _ensure_motion_plugin_registered(config: dict) -> None:
 def main(ctx: click.Context, config: Path | None) -> None:
     """Roamer - Richerd's physical body CLI."""
     ctx.ensure_object(dict)
-    # Use default config path if not specified
+    # Default to repo-local config.yaml only. Keep -c for explicit overrides.
     if config is None:
-        default_config = Path.home() / ".config" / "roamer" / "config.yaml"
+        default_config = _default_repo_config_path()
         if default_config.exists():
             config = default_config
     ctx.obj["config"] = load_config(config)
@@ -310,12 +315,16 @@ def motion_home(ctx: click.Context, wait_for_done: bool) -> None:
 @motion.command("goto")
 @click.option("--x", type=int, required=True, help="Target X coordinate")
 @click.option("--y", type=int, required=True, help="Target Y coordinate")
+@click.option("--angle", type=int, required=False, help="Optional target heading angle")
 @click.option("--wait", "wait_for_done", is_flag=True, help="Wait until arrived or timeout")
 @click.pass_context
-def motion_goto(ctx: click.Context, x: int, y: int, wait_for_done: bool) -> None:
+def motion_goto(ctx: click.Context, x: int, y: int, angle: int | None, wait_for_done: bool) -> None:
     """Navigate robot to target coordinates."""
     _ensure_motion_plugin_registered(ctx.obj["config"])
-    result = run_action("motion.goto", x=x, y=y, wait=wait_for_done)
+    params = {"x": x, "y": y, "wait": wait_for_done}
+    if angle is not None:
+        params["angle"] = angle
+    result = run_action("motion.goto", **params)
     emit_contract_result(ctx, "motion.goto", result)
 
 
