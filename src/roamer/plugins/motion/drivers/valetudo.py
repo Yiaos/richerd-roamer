@@ -133,10 +133,14 @@ class ValetudoMotionDriver:
     def home(self) -> dict[str, Any]:
         return self._invoke_capability("BasicControlCapability", {"action": "home"})
 
-    def goto(self, x: int, y: int) -> dict[str, Any]:
+    def goto(self, x: int, y: int, angle: int | None = None) -> dict[str, Any]:
+        payload: dict[str, Any] = {"action": "goto", "coordinates": {"x": int(x), "y": int(y)}}
+        if angle is not None:
+            payload["angle"] = int(angle)
+
         return self._invoke_capability(
             "GoToLocationCapability",
-            {"action": "goto", "coordinates": {"x": int(x), "y": int(y)}},
+            payload,
         )
 
     def _invoke_capability(self, capability: str, payload: dict[str, Any]) -> dict[str, Any]:

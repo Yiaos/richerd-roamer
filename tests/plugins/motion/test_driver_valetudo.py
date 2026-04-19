@@ -130,6 +130,27 @@ def test_goto_invokes_goto_capability() -> None:
     assert result["action"] == "goto"
 
 
+def test_goto_includes_optional_angle_payload() -> None:
+    captured = {}
+
+    def _urlopen_capture(request, timeout=0):
+        captured["url"] = request.full_url
+        captured["method"] = request.get_method()
+        captured["data"] = request.data
+        return _FakeResponse(200, {"accepted": True})
+
+    driver = ValetudoMotionDriver(_cfg(), urlopen=_urlopen_capture)
+    result = driver.goto(25500, 25300, angle=277)
+
+    assert result["ok"] is True
+    payload = json.loads(captured["data"].decode("utf-8"))
+    assert payload == {
+        "action": "goto",
+        "coordinates": {"x": 25500, "y": 25300},
+        "angle": 277,
+    }
+
+
 def test_has_capability_true_and_false() -> None:
     caps = [
         "LocateCapability",

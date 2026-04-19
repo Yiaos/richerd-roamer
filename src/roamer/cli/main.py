@@ -354,12 +354,16 @@ def motion_home(ctx: click.Context, wait_for_done: bool) -> None:
 @motion.command("goto")
 @click.option("--x", type=int, required=True, help="Target X coordinate")
 @click.option("--y", type=int, required=True, help="Target Y coordinate")
+@click.option("--angle", type=int, required=False, help="Optional target heading angle")
 @click.option("--wait", "wait_for_done", is_flag=True, help="Wait until arrived or timeout")
 @click.pass_context
-def motion_goto(ctx: click.Context, x: int, y: int, wait_for_done: bool) -> None:
+def motion_goto(ctx: click.Context, x: int, y: int, angle: int | None, wait_for_done: bool) -> None:
     """Navigate robot to target coordinates."""
     _ensure_motion_plugin_registered(ctx.obj["config"])
-    result = run_action("motion.goto", x=x, y=y, wait=wait_for_done)
+    params = {"x": x, "y": y, "wait": wait_for_done}
+    if angle is not None:
+        params["angle"] = angle
+    result = run_action("motion.goto", **params)
     emit_contract_result(ctx, "motion.goto", result)
 
 
