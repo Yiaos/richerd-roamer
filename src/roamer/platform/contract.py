@@ -58,6 +58,7 @@ class ErrorCode(StrEnum):
     MOTION_POSITION_UNAVAILABLE = "motion.position.unavailable"
     MOTION_GOTO_GUARD_FAILED = "motion.goto.guard_failed"
     MOTION_GOTO_TIMEOUT = "motion.goto.timeout"
+    MOTION_HOME_TIMEOUT = "motion.home.timeout"
     CONFIG_INVALID = "config.invalid"
     DRIVER_NOT_FOUND = "driver.not_found"
     ACTION_NOT_FOUND = "action.not_found"
@@ -96,6 +97,7 @@ ERROR_EXIT_CATEGORY: dict[str, ExitCategory] = {
     ErrorCode.BLUETOOTH_CONNECT_TIMEOUT.value: ExitCategory.TIMEOUT,
     ErrorCode.BLUETOOTH_DISCONNECT_TIMEOUT.value: ExitCategory.TIMEOUT,
     ErrorCode.MOTION_GOTO_TIMEOUT.value: ExitCategory.TIMEOUT,
+    ErrorCode.MOTION_HOME_TIMEOUT.value: ExitCategory.TIMEOUT,
     ErrorCode.DEPENDENCY_AUDIO_ARECORD_MISSING.value: ExitCategory.DEPENDENCY,
     ErrorCode.DEPENDENCY_AUDIO_APLAY_MISSING.value: ExitCategory.DEPENDENCY,
     ErrorCode.DEPENDENCY_AUDIO_FFMPEG_MISSING.value: ExitCategory.DEPENDENCY,

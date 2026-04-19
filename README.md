@@ -10,7 +10,7 @@ Roamer exposes action-based commands with deterministic JSON output so OpenClaw 
 - `watch` / `speak` / `sense` are usable
 - `listen` exists but still under real-world tuning (audio device and VAD stability)
 - `init` runs Roamer-owned startup initialization such as Bluetooth speaker connect
-- Motion control via Valetudo is planned next
+- `motion` is now available with Valetudo-backed base mobility (`status / position / locate / home / goto`)
 
 ## Implemented Commands
 
@@ -21,6 +21,11 @@ Roamer exposes action-based commands with deterministic JSON output so OpenClaw 
 - `roamer listen` — voice input (record + VAD + ASR)
 - `roamer sense` — self-state perception
 - `roamer init` — startup initialization owned by Roamer itself
+- `roamer motion status`
+- `roamer motion position`
+- `roamer motion locate`
+- `roamer motion home [--wait]`
+- `roamer motion goto --x <x> --y <y> [--wait]`
 
 ### Utility commands
 
@@ -53,6 +58,13 @@ roamer sense --full
 
 # startup initialization (for systemd / boot hooks)
 roamer init
+
+# motion
+roamer motion status
+roamer motion position
+roamer motion locate
+roamer motion home --wait
+roamer motion goto --x 25500 --y 25300 --wait
 
 # audio utils
 roamer audio record --duration 5 --output /tmp/rec.wav

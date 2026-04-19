@@ -11,6 +11,7 @@ from roamer.platform.output import attach_contract_fields
 from roamer.platform.plugin_registry import registry
 from roamer.platform.runtime import run_action
 from roamer.plugins.interaction.plugin import register as register_interaction_plugin
+from roamer.plugins.motion.plugin import register as register_motion_plugin
 from roamer.plugins.perception.plugin import register as register_perception_plugin
 
 
@@ -66,6 +67,19 @@ def _ensure_interaction_plugin_registered(config: dict) -> None:
     ):
         registry.remove(action_name)
     register_interaction_plugin(registry, config)
+
+
+def _ensure_motion_plugin_registered(config: dict) -> None:
+    """Register motion actions for current command execution."""
+    for action_name in (
+        "motion.status",
+        "motion.position",
+        "motion.locate",
+        "motion.home",
+        "motion.goto",
+    ):
+        registry.remove(action_name)
+    register_motion_plugin(registry, config)
 
 
 @click.group()
@@ -247,6 +261,62 @@ def bt_connect(ctx: click.Context, address: str) -> None:
     _ensure_interaction_plugin_registered(ctx.obj["config"])
     result = run_action("bt.connect", address=address)
     emit_contract_result(ctx, "bt.connect", result)
+
+
+# Motion - base mobility capability
+@main.group()
+def motion() -> None:
+    """Motion utilities backed by Valetudo."""
+    pass
+
+
+@motion.command("status")
+@click.pass_context
+def motion_status(ctx: click.Context) -> None:
+    """Show current motion status."""
+    _ensure_motion_plugin_registered(ctx.obj["config"])
+    result = run_action("motion.status")
+    emit_contract_result(ctx, "motion.status", result)
+
+
+@motion.command("position")
+@click.pass_context
+def motion_position(ctx: click.Context) -> None:
+    """Show current robot position."""
+    _ensure_motion_plugin_registered(ctx.obj["config"])
+    result = run_action("motion.position")
+    emit_contract_result(ctx, "motion.position", result)
+
+
+@motion.command("locate")
+@click.pass_context
+def motion_locate(ctx: click.Context) -> None:
+    """Trigger locate action for the robot."""
+    _ensure_motion_plugin_registered(ctx.obj["config"])
+    result = run_action("motion.locate")
+    emit_contract_result(ctx, "motion.locate", result)
+
+
+@motion.command("home")
+@click.option("--wait", "wait_for_done", is_flag=True, help="Wait until docked or timeout")
+@click.pass_context
+def motion_home(ctx: click.Context, wait_for_done: bool) -> None:
+    """Send robot back to dock."""
+    _ensure_motion_plugin_registered(ctx.obj["config"])
+    result = run_action("motion.home", wait=wait_for_done)
+    emit_contract_result(ctx, "motion.home", result)
+
+
+@motion.command("goto")
+@click.option("--x", type=int, required=True, help="Target X coordinate")
+@click.option("--y", type=int, required=True, help="Target Y coordinate")
+@click.option("--wait", "wait_for_done", is_flag=True, help="Wait until arrived or timeout")
+@click.pass_context
+def motion_goto(ctx: click.Context, x: int, y: int, wait_for_done: bool) -> None:
+    """Navigate robot to target coordinates."""
+    _ensure_motion_plugin_registered(ctx.obj["config"])
+    result = run_action("motion.goto", x=x, y=y, wait=wait_for_done)
+    emit_contract_result(ctx, "motion.goto", result)
 
 
 if __name__ == "__main__":
