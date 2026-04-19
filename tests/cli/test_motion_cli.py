@@ -59,3 +59,13 @@ def test_motion_home_wait_dispatches_run_action(monkeypatch) -> None:
     assert called["action_name"] == "motion.home"
     assert called["kwargs"] == {"wait": True}
     assert '"command": "motion.home"' in result.output
+
+
+def test_motion_status_missing_valetudo_config_returns_contract_error() -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["motion", "status"])
+
+    assert result.exit_code == 2
+    assert '"command": "motion.status"' in result.output
+    assert '"error_code": "config.invalid"' in result.output
+    assert "Traceback" not in result.output
