@@ -10,6 +10,9 @@ class _GuardFailDriver:
 
 
 class _NonWaitDriver:
+    def __init__(self):
+        self.last_goto = None
+
     def has_capability(self, name):
         return {"ok": True, "available": True}
 
@@ -19,7 +22,8 @@ class _NonWaitDriver:
     def get_position(self):
         return {"ok": True, "x": 10, "y": 20, "angle": 90}
 
-    def goto(self, x, y):
+    def goto(self, x, y, angle=None):
+        self.last_goto = {"x": x, "y": y, "angle": angle}
         return {"ok": True, "response": {"accepted": True}}
 
 
@@ -80,9 +84,10 @@ def test_goto_guard_fails(monkeypatch) -> None:
 
 
 def test_goto_without_wait_accepts(monkeypatch) -> None:
+    driver = _NonWaitDriver()
     monkeypatch.setattr(
         "roamer.plugins.motion.actions.goto.ValetudoMotionDriver",
-        lambda cfg: _NonWaitDriver(),
+        lambda cfg: driver,
     )
 
     action = MotionGotoAction(config=_motion_cfg(wait_timeout=1))
@@ -91,6 +96,22 @@ def test_goto_without_wait_accepts(monkeypatch) -> None:
     assert result["ok"] is True
     assert result["accepted"] is True
     assert result["waiting"] is False
+    assert driver.last_goto == {"x": 100, "y": 100, "angle": None}
+
+
+def test_goto_with_angle_forwards_to_driver(monkeypatch) -> None:
+    driver = _NonWaitDriver()
+    monkeypatch.setattr(
+        "roamer.plugins.motion.actions.goto.ValetudoMotionDriver",
+        lambda cfg: driver,
+    )
+
+    action = MotionGotoAction(config=_motion_cfg(wait_timeout=1))
+    result = action.run(x=100, y=100, angle=277, wait=False)
+
+    assert result["ok"] is True
+    assert driver.last_goto == {"x": 100, "y": 100, "angle": 277}
+    assert result["target"] == {"x": 100, "y": 100, "angle": 277}
 
 
 def test_goto_wait_success(monkeypatch) -> None:

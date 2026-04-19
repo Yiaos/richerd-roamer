@@ -20,12 +20,12 @@ class MotionGotoAction:
         self._poll_interval_sec = float(motion.get("poll_interval_sec", 2))
         self._arrival_tolerance = int(motion.get("arrival_tolerance", 150))
 
-    def run(self, x: int, y: int, wait: bool = False) -> dict[str, Any]:
+    def run(self, x: int, y: int, angle: int | None = None, wait: bool = False) -> dict[str, Any]:
         guard_result = self._check_guard()
         if not guard_result.get("ok"):
             return guard_result
 
-        command_result = self._driver.goto(x=x, y=y)
+        command_result = self._driver.goto(x=x, y=y, angle=angle)
         if not command_result.get("ok"):
             return command_result
 
@@ -34,7 +34,7 @@ class MotionGotoAction:
                 accepted=True,
                 waiting=False,
                 action="goto",
-                target={"x": int(x), "y": int(y)},
+                target={"x": int(x), "y": int(y), "angle": int(angle) if angle is not None else None},
                 response=command_result.get("response"),
             )
 
@@ -68,7 +68,7 @@ class MotionGotoAction:
                         return success(
                             accepted=True,
                             waiting=True,
-                            target={"x": int(x), "y": int(y)},
+                            target={"x": int(x), "y": int(y), "angle": int(angle) if angle is not None else None},
                             position=position,
                             status=last_status,
                             distance=round(last_distance, 2),
@@ -82,7 +82,7 @@ class MotionGotoAction:
             "motion_goto_timeout",
             "Timed out waiting for robot to reach target",
             error_code=ErrorCode.MOTION_GOTO_TIMEOUT,
-            target={"x": int(x), "y": int(y)},
+            target={"x": int(x), "y": int(y), "angle": int(angle) if angle is not None else None},
             timeout_sec=self._wait_timeout_sec,
             arrival_tolerance=self._arrival_tolerance,
             last_status=last_status,
