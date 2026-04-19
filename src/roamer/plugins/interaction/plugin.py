@@ -10,6 +10,7 @@ from roamer.plugins.interaction.actions.bt_connect import BtConnectAction
 from roamer.plugins.interaction.actions.bt_status import BtStatusAction
 from roamer.plugins.interaction.actions.listen import ListenAction
 from roamer.plugins.interaction.actions.speak import SpeakAction
+from roamer.plugins.interaction.capabilities.init import InitCapability
 
 
 def _lazy_runner(
@@ -32,3 +33,4 @@ def register(registry: PluginRegistry, config: dict[str, Any]) -> None:
     registry.register("audio.play", _lazy_runner(AudioPlayAction, config))
     registry.register("bt.status", _lazy_runner(BtStatusAction, config))
     registry.register("bt.connect", _lazy_runner(BtConnectAction, config))
+    registry.register("init", _lazy_runner(InitCapability, config))

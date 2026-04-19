@@ -1,0 +1,11 @@
+[Unit]
+Description=Roamer startup initialization
+After=default.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/roamer init
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target
