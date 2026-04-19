@@ -19,8 +19,24 @@ class ValetudoMotionDriver:
 
     def __init__(self, config: dict[str, Any], urlopen: UrlOpen | None = None):
         self._config = config
-        self._host = str(config.get("host", "10.0.0.100"))
-        self._port = int(config.get("port", 80))
+
+        raw_host = config.get("host")
+        if raw_host is None or not str(raw_host).strip():
+            raise ValueError("valetudo.host is required")
+
+        raw_port = config.get("port")
+        if raw_port is None:
+            raise ValueError("valetudo.port is required")
+
+        try:
+            port = int(raw_port)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("valetudo.port must be an integer") from exc
+        if port <= 0:
+            raise ValueError("valetudo.port must be > 0")
+
+        self._host = str(raw_host).strip()
+        self._port = port
         self._timeout_sec = float(config.get("timeout_sec", 8.0))
         self._urlopen = urlopen or urllib_request.urlopen
 

@@ -172,6 +172,12 @@ class InitCapability(Capability):
             "ok": False,
             "attempts": attempts,
             "error": last_result.get("error", "bluetooth_connect_failed"),
-            "message": last_result.get("message", "Bluetooth speaker connect retry budget exhausted"),
-            "error_code": last_result.get("error_code", ErrorCode.BLUETOOTH_CONNECT_FAILED),
+            "message": last_result.get(
+                "message",
+                "Bluetooth speaker connect retry budget exhausted",
+            ),
+            "error_code": last_result.get(
+                "error_code",
+                ErrorCode.BLUETOOTH_CONNECT_FAILED,
+            ),
         }

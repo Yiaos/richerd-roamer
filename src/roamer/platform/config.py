@@ -44,8 +44,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "model": "paraformer-zh-streaming",
     },
     "valetudo": {
-        "host": "10.0.0.100",
-        "port": 80,
+        "timeout_sec": 8.0,
     },
     "motion": {
         "wait_timeout_sec": 300,

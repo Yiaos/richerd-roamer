@@ -61,9 +61,13 @@ def _state(status: str = "idle", battery: int = 77, x: int = 10, y: int = 20, an
     }
 
 
+def _cfg() -> dict:
+    return {"host": "10.0.0.100", "port": 80, "timeout_sec": 8.0}
+
+
 def test_get_status_parses_state_fields() -> None:
     driver = ValetudoMotionDriver(
-        {},
+        _cfg(),
         urlopen=_urlopen_factory([_state(status="docked", battery=91)]),
     )
 
@@ -76,7 +80,10 @@ def test_get_status_parses_state_fields() -> None:
 
 
 def test_get_position_returns_robot_position() -> None:
-    driver = ValetudoMotionDriver({}, urlopen=_urlopen_factory([_state(x=2076, y=2378, angle=277)]))
+    driver = ValetudoMotionDriver(
+        _cfg(),
+        urlopen=_urlopen_factory([_state(x=2076, y=2378, angle=277)]),
+    )
 
     result = driver.get_position()
 
@@ -88,7 +95,7 @@ def test_get_position_returns_robot_position() -> None:
 
 def test_get_position_returns_unavailable_error_when_missing() -> None:
     driver = ValetudoMotionDriver(
-        {},
+        _cfg(),
         urlopen=_urlopen_factory([
             {
                 "attributes": [{"__class": "StatusStateAttribute", "value": "idle"}],
@@ -104,7 +111,7 @@ def test_get_position_returns_unavailable_error_when_missing() -> None:
 
 
 def test_home_invokes_basic_control_capability() -> None:
-    driver = ValetudoMotionDriver({}, urlopen=_urlopen_factory([{"accepted": True}]))
+    driver = ValetudoMotionDriver(_cfg(), urlopen=_urlopen_factory([{"accepted": True}]))
 
     result = driver.home()
 
@@ -114,7 +121,7 @@ def test_home_invokes_basic_control_capability() -> None:
 
 
 def test_goto_invokes_goto_capability() -> None:
-    driver = ValetudoMotionDriver({}, urlopen=_urlopen_factory([{"accepted": True}]))
+    driver = ValetudoMotionDriver(_cfg(), urlopen=_urlopen_factory([{"accepted": True}]))
 
     result = driver.goto(25500, 25300)
 
@@ -128,7 +135,7 @@ def test_has_capability_true_and_false() -> None:
         "LocateCapability",
         {"name": "GoToLocationCapability"},
     ]
-    driver = ValetudoMotionDriver({}, urlopen=_urlopen_factory([caps, caps]))
+    driver = ValetudoMotionDriver(_cfg(), urlopen=_urlopen_factory([caps, caps]))
 
     assert driver.has_capability("GoToLocationCapability")["available"] is True
     assert driver.has_capability("BasicControlCapability")["available"] is False
@@ -136,7 +143,7 @@ def test_has_capability_true_and_false() -> None:
 
 def test_request_json_handles_url_error() -> None:
     driver = ValetudoMotionDriver(
-        {},
+        _cfg(),
         urlopen=_urlopen_factory([urllib_error.URLError("network down")]),
     )
 
@@ -145,6 +152,34 @@ def test_request_json_handles_url_error() -> None:
     assert result["ok"] is False
     assert result["error"] == "motion_request_failed"
     assert result["error_code"] == "motion.request.failed"
+
+
+def test_init_requires_host_and_port() -> None:
+    try:
+        ValetudoMotionDriver({})
+        assert False, "Expected ValueError when host/port missing"
+    except ValueError as exc:
+        assert str(exc) == "valetudo.host is required"
+
+    try:
+        ValetudoMotionDriver({"host": "10.0.0.100"})
+        assert False, "Expected ValueError when port missing"
+    except ValueError as exc:
+        assert str(exc) == "valetudo.port is required"
+
+
+def test_init_rejects_invalid_port() -> None:
+    try:
+        ValetudoMotionDriver({"host": "10.0.0.100", "port": "abc"})
+        assert False, "Expected ValueError for non-integer port"
+    except ValueError as exc:
+        assert str(exc) == "valetudo.port must be an integer"
+
+    try:
+        ValetudoMotionDriver({"host": "10.0.0.100", "port": 0})
+        assert False, "Expected ValueError for non-positive port"
+    except ValueError as exc:
+        assert str(exc) == "valetudo.port must be > 0"
 
 
 def test_distance_to_target() -> None:

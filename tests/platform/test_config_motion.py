@@ -13,6 +13,12 @@ def test_default_motion_config_present() -> None:
     assert config["motion"]["arrival_tolerance"] == 150
 
 
+def test_default_valetudo_config_present() -> None:
+    config = load_config(None)
+
+    assert config["valetudo"]["timeout_sec"] == 8.0
+
+
 def test_user_motion_config_overrides_defaults(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
