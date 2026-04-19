@@ -62,6 +62,7 @@ def _ensure_interaction_plugin_registered(config: dict) -> None:
         "audio.play",
         "bt.status",
         "bt.connect",
+        "init",
     ):
         registry.remove(action_name)
     register_interaction_plugin(registry, config)
@@ -181,6 +182,15 @@ def sense(ctx: click.Context, full: bool) -> None:
     _ensure_perception_plugin_registered(ctx.obj["config"])
     result = run_action("sense", full=full)
     emit_contract_result(ctx, "sense", result)
+
+
+@main.command()
+@click.pass_context
+def init(ctx: click.Context) -> None:
+    """Run Roamer-owned startup initialization."""
+    _ensure_interaction_plugin_registered(ctx.obj["config"])
+    result = run_action("init")
+    emit_contract_result(ctx, "init", result)
 
 
 # === Utility commands (not core capabilities) ===

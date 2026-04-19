@@ -15,6 +15,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "motion": "valetudo",
         "bluetooth": "bluez",
     },
+    "init": {
+        "connect_speaker_on_startup": False,
+        "bluetooth_controller_ready_timeout_sec": 20.0,
+        "bluetooth_connect_retry_timeout_sec": 20.0,
+        "bluetooth_retry_interval_sec": 1.0,
+    },
     "fswebcam": {
         "device": "/dev/video0",
         "width": 1280,
@@ -40,6 +46,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "valetudo": {
         "host": "10.0.0.100",
         "port": 80,
+    },
+    "bluetooth": {
+        "speaker_mac": None,
     },
 }
 

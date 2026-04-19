@@ -9,9 +9,16 @@ drivers:
   motion: valetudo
   bluetooth: bluez
 
-# Bluetooth speaker auto-connect
+# Startup initialization owned by Roamer itself
+init:
+  connect_speaker_on_startup: true
+  bluetooth_controller_ready_timeout_sec: 20.0
+  bluetooth_connect_retry_timeout_sec: 20.0
+  bluetooth_retry_interval_sec: 1.0
+
+# Bluetooth speaker config
 bluetooth:
-  speaker_mac: "B8:5C:EE:89:00:BE"  # Auto-connect before playback
+  speaker_mac: "B8:5C:EE:89:00:BE"  # Used by startup init + lazy reconnect before playback
 
 # Driver-specific settings
 fswebcam:

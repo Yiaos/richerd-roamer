@@ -9,6 +9,7 @@ Roamer exposes action-based commands with deterministic JSON output so OpenClaw 
 - Phase 1 is active
 - `watch` / `speak` / `sense` are usable
 - `listen` exists but still under real-world tuning (audio device and VAD stability)
+- `init` runs Roamer-owned startup initialization such as Bluetooth speaker connect
 - Motion control via Valetudo is planned next
 
 ## Implemented Commands
@@ -19,6 +20,7 @@ Roamer exposes action-based commands with deterministic JSON output so OpenClaw 
 - `roamer speak` — voice output (TTS, supports `--style`)
 - `roamer listen` — voice input (record + VAD + ASR)
 - `roamer sense` — self-state perception
+- `roamer init` — startup initialization owned by Roamer itself
 
 ### Utility commands
 
@@ -49,6 +51,9 @@ roamer speak "我听到的是：${TEXT:-我这次没有听清楚内容。}"
 # self status
 roamer sense --full
 
+# startup initialization (for systemd / boot hooks)
+roamer init
+
 # audio utils
 roamer audio record --duration 5 --output /tmp/rec.wav
 roamer audio play /tmp/rec.wav
@@ -77,9 +82,25 @@ Error example:
 {"ok": false, "error": "camera_not_found", "message": "No camera at /dev/video0"}
 ```
 
+## Startup & Initialization
+
+Roamer should own its own initialization logic.
+
+That means:
+- systemd / boot hooks should start `roamer init`
+- startup behavior (for example Bluetooth speaker connect) should live in Roamer config + code
+- host-level shell scripts are only temporary migration tools, not the long-term architecture
+
+Current behavior:
+- `roamer init` can run boot-time initialization tasks
+- if `init.connect_speaker_on_startup: true` and `bluetooth.speaker_mac` is configured,
+  Roamer waits for the Bluetooth controller to become ready, then retries speaker connect during startup
+- `roamer speak` still keeps lazy reconnect before playback as a runtime fallback
+
 ## Audio Troubleshooting (fallbacks, not prerequisites)
 
 Normal flow should work without manual prep:
+- `roamer init` can perform boot-time speaker connect with controller-ready wait + retry.
 - `speak` already tries lazy Bluetooth reconnection internally.
 - `listen` should run without requiring a `pulseaudio --kill` pre-step.
 
