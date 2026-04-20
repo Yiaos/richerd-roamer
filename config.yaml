@@ -1,0 +1,105 @@
+# Roamer Configuration Example
+
+drivers:
+  camera: fswebcam
+  audio: alsa
+  tts: edge
+  asr: funasr
+  vad: silero
+  motion: valetudo
+  bluetooth: bluez
+
+# Startup initialization owned by Roamer itself
+init:
+  connect_speaker_on_startup: true
+  bluetooth_controller_ready_timeout_sec: 20.0
+  bluetooth_connect_retry_timeout_sec: 20.0
+  bluetooth_retry_interval_sec: 1.0
+
+# Bluetooth speaker config
+bluetooth:
+  speaker_mac: "B8:5C:EE:89:00:BE"  # Used by startup init + lazy reconnect before playback
+
+# Driver-specific settings
+fswebcam:
+  device: /dev/video0
+  width: 1280
+  height: 720
+
+alsa:
+  capture_device: "hw:2,0"
+  playback_device: "default"
+  sample_rate: 16000
+  channels: 2
+
+piper:
+  binary: ~/bin/piper/piper
+  model: ~/models/piper/zh_CN-huayan-medium.onnx
+
+edge:
+  voice: zh-CN-YunxiNeural
+  rate: "+0%"
+  volume: "+0%"
+
+silero:
+  model: ~/models/silero-vad/silero_vad.onnx
+  threshold: 0.5
+
+funasr:
+  model: paraformer-zh-streaming
+
+valetudo:
+  host: 10.0.0.100
+  port: 80
+
+motion:
+  wait_timeout_sec: 300
+  poll_interval_sec: 2
+  arrival_tolerance: 150
+  named_points:
+    阳台:
+      x: 2082
+      y: 2377
+      angle: 111
+    米多和阿良的房间:
+      x: 2540
+      y: 2565
+      angle: 266
+
+# Converse (voice wake + dialog loop)
+converse:
+  enabled: true
+  silence_timeout: 8.0
+  max_turns: 10
+  no_sound_default: false
+
+  wakeword:
+    enabled: true
+    driver: openwakeword
+    model: ""
+    threshold: 0.5
+    prompt_sound: true
+
+  # Minimal v1 intent whitelist seed
+  intents:
+    - name: time_now
+      action: time.now
+      patterns: ["现在几点", "几点了"]
+    - name: status
+      action: sense
+      patterns: ["你在哪", "状态"]
+    - name: watch
+      action: watch
+      patterns: ["看一下", "拍张照"]
+    - name: go_home
+      action: motion.home
+      patterns: ["回家", "回充电"]
+    - name: position
+      action: motion.position
+      patterns: ["你在哪个位置", "当前位置"]
+
+  discord:
+    enabled: false
+    channel_id: ""
+    token_env: DISCORD_BOT_TOKEN
+    source: roamer
