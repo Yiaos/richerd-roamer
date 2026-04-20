@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from roamer.platform.contract import ErrorCode
+from roamer.platform.errors import RoamerError
 from roamer.platform.output import error
 from roamer.platform.plugin_registry import PluginRegistry
 from roamer.plugins.interaction.actions.audio_play import AudioPlayAction
@@ -30,6 +31,14 @@ def _lazy_runner(
                 "config_invalid",
                 str(exc),
                 error_code=ErrorCode.CONFIG_INVALID,
+            )
+        except RoamerError as exc:
+            canonical_code = getattr(exc, "code", "runtime_error")
+            legacy_code = canonical_code.replace(".", "_")
+            return error(
+                legacy_code,
+                str(exc),
+                error_code=canonical_code,
             )
 
     return _run

@@ -50,3 +50,34 @@ def test_converse_cli_uses_config_defaults_when_no_flags(tmp_path) -> None:
     assert result.exit_code in {0, 2, 10, 11, 12}
     payload = json.loads(result.output.strip())
     assert payload["command"] == "converse"
+
+
+def test_converse_cli_returns_contract_error_when_asr_driver_missing(tmp_path) -> None:
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "drivers:",
+                "  asr: missing_asr",
+                "  tts: edge",
+                "  vad: silero",
+                "  audio: alsa",
+                "  bluetooth: bluez",
+                "  camera: fswebcam",
+                "converse:",
+                "  wakeword:",
+                "    enabled: false",
+            ]
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["--config", str(config), "converse", "--no-wakeword"])
+
+    assert result.exit_code == 11
+    payload = json.loads(result.output.strip())
+    assert payload["ok"] is False
+    assert payload["command"] == "converse"
+    assert payload["error"] == "converse_listen_failed"
+    assert payload["error_code"] == "converse.listen.failed"
+    assert payload["turns"][0]["error_code"] == "driver.not_found"
