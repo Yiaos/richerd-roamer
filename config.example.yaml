@@ -56,6 +56,15 @@ motion:
   wait_timeout_sec: 300
   poll_interval_sec: 2
   arrival_tolerance: 150
+  named_points:
+    阳台:
+      x: 2082
+      y: 2377
+      angle: 111
+    米多和阿良的房间:
+      x: 2540
+      y: 2565
+      angle: 266
 
 # Converse (voice wake + dialog loop)
 converse:
