@@ -68,3 +68,11 @@ def test_dependency_codes_map_to_dependency_exit_category():
 def test_speech_asr_runtime_failed_code_is_stable():
     """ASR runtime error code value should remain backward compatible."""
     assert ErrorCode.SPEECH_ASR_RUNTIME_FAILED.value == "speech.asr.runtime_failed"
+
+
+def test_converse_namespace_codes_are_stable():
+    """Converse namespace codes should remain backward compatible."""
+    assert ErrorCode.CONVERSE_INTENT_INVALID_ACTION.value == "converse.intent.invalid_action"
+    assert ErrorCode.CONVERSE_DISCORD_SEND_FAILED.value == "converse.discord.send_failed"
+    assert ErrorCode.CONVERSE_WAKEWORD_UNAVAILABLE.value == "converse.wakeword.unavailable"
+    assert ErrorCode.CONVERSE_LISTEN_FAILED.value == "converse.listen.failed"

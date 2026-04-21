@@ -59,6 +59,10 @@ class ErrorCode(StrEnum):
     MOTION_GOTO_GUARD_FAILED = "motion.goto.guard_failed"
     MOTION_GOTO_TIMEOUT = "motion.goto.timeout"
     MOTION_HOME_TIMEOUT = "motion.home.timeout"
+    CONVERSE_INTENT_INVALID_ACTION = "converse.intent.invalid_action"
+    CONVERSE_DISCORD_SEND_FAILED = "converse.discord.send_failed"
+    CONVERSE_WAKEWORD_UNAVAILABLE = "converse.wakeword.unavailable"
+    CONVERSE_LISTEN_FAILED = "converse.listen.failed"
     CONFIG_INVALID = "config.invalid"
     DRIVER_NOT_FOUND = "driver.not_found"
     ACTION_NOT_FOUND = "action.not_found"
@@ -82,6 +86,10 @@ _CANONICAL_BY_LEGACY_ERROR: dict[str, str] = {
     "config_invalid": ErrorCode.CONFIG_INVALID.value,
     "driver_not_found": ErrorCode.DRIVER_NOT_FOUND.value,
     "action_not_found": ErrorCode.ACTION_NOT_FOUND.value,
+    "converse_discord_send_failed": ErrorCode.CONVERSE_DISCORD_SEND_FAILED.value,
+    "converse_wakeword_unavailable": ErrorCode.CONVERSE_WAKEWORD_UNAVAILABLE.value,
+    "converse_listen_failed": ErrorCode.CONVERSE_LISTEN_FAILED.value,
+    "converse_intent_invalid_action": ErrorCode.CONVERSE_INTENT_INVALID_ACTION.value,
 }
 
 LEGACY_ERROR_MAP = _CANONICAL_BY_LEGACY_ERROR

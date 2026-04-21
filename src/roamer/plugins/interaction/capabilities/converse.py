@@ -1,0 +1,180 @@
+"""Converse capability (R1/R2) for interaction plugin."""
+
+from __future__ import annotations
+
+import datetime as dt
+import threading
+import uuid
+from typing import Any
+
+from roamer.platform.contract import ErrorCode
+from roamer.platform.output import error, success
+from roamer.platform.runtime import run_action
+from roamer.plugins.interaction.capabilities.base import Capability
+from roamer.plugins.interaction.drivers.registry import get_driver
+from roamer.plugins.interaction.services.discord_client import send_fallback
+from roamer.plugins.interaction.services.intent import match_intent
+
+
+class ConverseCapability(Capability):
+    """Single-process converse state machine."""
+
+    def __init__(self, config: dict[str, Any]):
+        super().__init__(config)
+        self._audio_lock = threading.Lock()
+
+    def _safe_listen(self, timeout: float) -> dict[str, Any]:
+        with self._audio_lock:
+            return run_action("listen", timeout=timeout, save_audio=None, debug=False)
+
+    def _safe_speak(self, text: str, no_sound: bool) -> dict[str, Any]:
+        if no_sound:
+            return success(skipped=True, reason="no_sound")
+        with self._audio_lock:
+            return run_action("speak", text=text, save_path=None, play=True, style=None)
+
+    def _fallback_via_discord(
+        self,
+        text: str,
+        *,
+        discord_cfg: dict[str, Any],
+        session_id: str,
+        turn_id: int,
+    ) -> dict[str, Any]:
+        return send_fallback(
+            text,
+            config={"discord": discord_cfg},
+            session_id=session_id,
+            turn_id=turn_id,
+            timeout_sec=3.0,
+        )
+
+    def _wait_wakeword(self, wakeword_cfg: dict[str, Any], timeout: float) -> dict[str, Any]:
+        if not wakeword_cfg.get("enabled", True):
+            return success(triggered=True, skipped=True, reason="wakeword_disabled")
+
+        try:
+            driver_name = str(wakeword_cfg.get("driver") or "openwakeword")
+            driver_cfg = {
+                "model": wakeword_cfg.get("model", ""),
+                "threshold": wakeword_cfg.get("threshold", 0.5),
+            }
+            driver = get_driver("wakeword", driver_name, driver_cfg)
+            driver.start()
+            try:
+                hit = driver.wait_hit(timeout=timeout)
+            finally:
+                driver.stop()
+            return success(triggered=bool(hit), timeout=timeout)
+        except Exception as exc:
+            return error(
+                "converse_wakeword_unavailable",
+                f"Wakeword driver unavailable: {exc}",
+                error_code=ErrorCode.CONVERSE_WAKEWORD_UNAVAILABLE,
+            )
+
+    def run(
+        self,
+        *,
+        no_wakeword: bool = False,
+        timeout: float = 8.0,
+        no_sound: bool = False,
+        max_turns: int = 10,
+    ) -> dict[str, Any]:
+        converse_cfg = self.config.get("converse", {})
+        intents = converse_cfg.get("intents", [])
+        discord_cfg = converse_cfg.get("discord", {})
+        wakeword_cfg = converse_cfg.get("wakeword", {})
+
+        session_id = uuid.uuid4().hex[:12]
+        turns: list[dict[str, Any]] = []
+
+        if not no_wakeword:
+            wake = self._wait_wakeword(wakeword_cfg, timeout=timeout)
+            if not wake.get("ok"):
+                return wake
+            if not wake.get("triggered"):
+                return success(
+                    completed=True,
+                    session_id=session_id,
+                    mode="wakeword",
+                    turns=[],
+                    reason="wakeword_timeout",
+                )
+            if bool(wakeword_cfg.get("prompt_sound", True)) and not no_sound:
+                self._safe_speak("在", no_sound=False)
+
+        for turn_id in range(1, max_turns + 1):
+            listen_result = self._safe_listen(timeout=timeout)
+            if not listen_result.get("ok"):
+                turns.append(
+                    {
+                        "turn_id": turn_id,
+                        "stage": "listen",
+                        "ok": False,
+                        "error_code": listen_result.get("error_code"),
+                    }
+                )
+                return error(
+                    "converse_listen_failed",
+                    "Converse listen stage failed",
+                    error_code=ErrorCode.CONVERSE_LISTEN_FAILED,
+                    session_id=session_id,
+                    turn_id=turn_id,
+                    turns=turns,
+                )
+
+            text = str(listen_result.get("text") or "").strip()
+            if not text:
+                turns.append({"turn_id": turn_id, "stage": "listen", "ok": True, "empty": True})
+                break
+
+            intent_result = match_intent(text, intents)
+            if not intent_result.get("ok"):
+                turns.append(
+                    {
+                        "turn_id": turn_id,
+                        "stage": "intent",
+                        "ok": False,
+                        "error_code": intent_result.get("error_code"),
+                        "text": text,
+                    }
+                )
+                return intent_result
+
+            turn_info: dict[str, Any] = {
+                "turn_id": turn_id,
+                "text": text,
+                "matched": bool(intent_result.get("matched")),
+                "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
+            }
+
+            if intent_result.get("matched"):
+                action = str(intent_result.get("action"))
+                if action == "time.now":
+                    now_text = dt.datetime.now().strftime("现在是 %H:%M")
+                    speak_result = self._safe_speak(now_text, no_sound=no_sound)
+                    turn_info.update({"route": "local", "action": action, "speak": speak_result})
+                else:
+                    action_result = run_action(action)
+                    turn_info.update({"route": "local", "action": action, "action_result": action_result})
+                    if action_result.get("ok"):
+                        self._safe_speak(f"已执行 {action}", no_sound=no_sound)
+            else:
+                fallback_result = self._fallback_via_discord(
+                    text,
+                    discord_cfg=discord_cfg,
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
+                turn_info.update({"route": "discord", "fallback": fallback_result})
+
+            turns.append(turn_info)
+
+        return success(
+            completed=True,
+            session_id=session_id,
+            mode="no_wakeword" if no_wakeword else "wakeword",
+            max_turns=max_turns,
+            turns=turns,
+        )

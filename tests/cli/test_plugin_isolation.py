@@ -33,3 +33,33 @@ def test_bt_status_is_not_blocked_by_broken_asr_config(tmp_path) -> None:
     payload = json.loads(result.output.strip())
     assert payload["command"] == "bt.status"
     assert "error_code" in payload or payload.get("ok") is True
+
+
+def test_bt_status_is_not_blocked_by_broken_wakeword_driver(tmp_path) -> None:
+    """bt status should remain isolated even if converse wakeword config is bad."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "drivers:",
+                "  asr: funasr",
+                "  tts: edge",
+                "  vad: silero",
+                "  audio: alsa",
+                "  bluetooth: bluez",
+                "  camera: fswebcam",
+                "converse:",
+                "  wakeword:",
+                "    enabled: true",
+                "    driver: missing_wakeword",
+            ]
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["--config", str(config_path), "bt", "status"])
+
+    assert result.exit_code in {0, 10, 11, 12}
+    payload = json.loads(result.output.strip())
+    assert payload["command"] == "bt.status"
+    assert "error_code" in payload or payload.get("ok") is True

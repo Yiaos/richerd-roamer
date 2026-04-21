@@ -25,7 +25,7 @@ Roamer exposes action-based commands with deterministic JSON output so OpenClaw 
 - `roamer motion position`
 - `roamer motion locate`
 - `roamer motion home [--wait]`
-- `roamer motion goto --x <x> --y <y> [--wait]`
+- `roamer motion goto --x <x> --y <y> [--angle <deg>] [--wait]`
 
 ### Utility commands
 
@@ -65,6 +65,7 @@ roamer motion position
 roamer motion locate
 roamer motion home --wait
 roamer motion goto --x 25500 --y 25300 --wait
+roamer motion goto --x 25500 --y 25300 --angle 90 --wait
 
 # audio utils
 roamer audio record --duration 5 --output /tmp/rec.wav
@@ -93,6 +94,12 @@ Error example:
 ```json
 {"ok": false, "error": "camera_not_found", "message": "No camera at /dev/video0"}
 ```
+
+## Config Resolution
+
+- Default config path is **repo-local** `config.yaml` (project root)
+- Use `-c/--config` for explicit override
+- If repo `config.yaml` is absent and no `-c` is provided, Roamer falls back to internal defaults
 
 ## Startup & Initialization
 
@@ -132,6 +139,13 @@ For Roamer's near-term MVP, `motion` means Valetudo-backed base actions:
 - `goto` (guarded by map readiness)
 
 It explicitly does **not** mean full teleop/path planning/NL navigation in the first iteration.
+
+## Motion Test Safety
+
+To prevent accidental real-hardware movement during unit tests:
+- motion unit tests block real network calls by default
+- tests must inject fake `urlopen` stubs/mocks for Valetudo driver calls
+- accidental live HTTP calls fail fast in test runtime
 
 ## Architecture
 
