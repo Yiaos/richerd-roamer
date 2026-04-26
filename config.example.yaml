@@ -12,6 +12,8 @@ drivers:
 # Startup initialization owned by Roamer itself
 init:
   connect_speaker_on_startup: true
+  configure_proxy_on_startup: true
+  proxy_init_timeout_sec: 20.0
   bluetooth_controller_ready_timeout_sec: 20.0
   bluetooth_connect_retry_timeout_sec: 20.0
   bluetooth_retry_interval_sec: 1.0
@@ -103,3 +105,7 @@ converse:
     channel_id: ""
     token_env: DISCORD_BOT_TOKEN
     source: roamer
+    # Optional: mention OpenClaw/Richerd so Discord allowBots="mentions" accepts bot-authored fallback messages.
+    mention_user_id: ""
+    mention_role_id: ""
+    mention: ""

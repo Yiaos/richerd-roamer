@@ -1,9 +1,21 @@
 """Configuration loading and management."""
 
+import os
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+
+def default_repo_config_path() -> Path:
+    """Return default repo-local config path (project root/config.yaml)."""
+    return Path(__file__).resolve().parents[3] / "config.yaml"
+
+
+def default_proxy_init_script_path() -> Path:
+    """Return the repo-local proxy init script path."""
+    return default_repo_config_path().parent / "scripts" / "init-roamer-proxy.sh"
+
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "drivers": {
@@ -17,6 +29,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "init": {
         "connect_speaker_on_startup": False,
+        "configure_proxy_on_startup": False,
+        "proxy_init_script": "",
+        "proxy_init_timeout_sec": 20.0,
         "bluetooth_controller_ready_timeout_sec": 20.0,
         "bluetooth_connect_retry_timeout_sec": 20.0,
         "bluetooth_retry_interval_sec": 1.0,
@@ -82,21 +97,49 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "channel_id": "",
             "token_env": "DISCORD_BOT_TOKEN",
             "source": "roamer",
+            "mention_user_id": "",
+            "mention_role_id": "",
+            "mention": "",
         },
     },
 }
 
 
+def resolve_config_path(path: Path | None = None) -> Path | None:
+    """Resolve the effective config path for runtime and CLI callers."""
+    if path is not None:
+        return path
+
+    env_path = os.environ.get("ROAMER_CONFIG")
+    if env_path:
+        return Path(env_path).expanduser()
+
+    repo_config = default_repo_config_path()
+    if repo_config.exists():
+        return repo_config
+
+    return None
+
+
 def load_config(path: Path | None = None) -> dict[str, Any]:
     """Load configuration from file, merging with defaults."""
     config = _deep_copy(DEFAULT_CONFIG)
+    resolved_path = resolve_config_path(path)
 
-    if path is not None and path.exists():
-        with open(path) as f:
+    if resolved_path is not None and resolved_path.exists():
+        with open(resolved_path) as f:
             user_config = yaml.safe_load(f) or {}
         _deep_merge(config, user_config)
 
+    _apply_dynamic_defaults(config)
     return config
+
+
+def _apply_dynamic_defaults(config: dict[str, Any]) -> None:
+    """Fill defaults that depend on the installed repository location."""
+    init_config = config.setdefault("init", {})
+    if not init_config.get("proxy_init_script"):
+        init_config["proxy_init_script"] = str(default_proxy_init_script_path())
 
 
 def get_driver_name(config: dict[str, Any], capability: str) -> str:
