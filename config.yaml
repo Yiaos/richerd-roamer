@@ -12,6 +12,8 @@ drivers:
 # Startup initialization owned by Roamer itself
 init:
   connect_speaker_on_startup: true
+  configure_proxy_on_startup: true
+  proxy_init_timeout_sec: 20.0
   bluetooth_controller_ready_timeout_sec: 20.0
   bluetooth_connect_retry_timeout_sec: 20.0
   bluetooth_retry_interval_sec: 1.0
@@ -27,7 +29,7 @@ fswebcam:
   height: 720
 
 alsa:
-  capture_device: "hw:2,0"
+  capture_device: "hw:0,0"
   playback_device: "default"
   sample_rate: 16000
   channels: 2
@@ -43,14 +45,15 @@ edge:
 
 silero:
   model: ~/models/silero-vad/silero_vad.onnx
-  threshold: 0.5
+  threshold: 0.1
 
 funasr:
   model: paraformer-zh-streaming
 
 valetudo:
-  host: 10.0.0.100
+  host: 10.0.0.226
   port: 80
+  timeout_sec: 8.0
 
 motion:
   wait_timeout_sec: 300
@@ -70,15 +73,15 @@ motion:
 converse:
   enabled: true
   silence_timeout: 8.0
-  max_turns: 10
+  max_turns: 1
   no_sound_default: false
 
   wakeword:
-    enabled: true
+    enabled: false
     driver: openwakeword
     model: ""
     threshold: 0.5
-    prompt_sound: true
+    prompt_sound: false
 
   # Minimal v1 intent whitelist seed
   intents:
@@ -99,7 +102,10 @@ converse:
       patterns: ["你在哪个位置", "当前位置"]
 
   discord:
-    enabled: false
-    channel_id: ""
+    enabled: true
+    channel_id: "1478341934324908084"
     token_env: DISCORD_BOT_TOKEN
     source: roamer
+    mention_user_id: "1477701379437891695"
+    mention_role_id: ""
+    mention: ""

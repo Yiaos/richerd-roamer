@@ -6,9 +6,16 @@ from pathlib import Path
 from roamer.platform.config import get_driver_config, get_driver_name, load_config
 
 
-def test_load_default_config():
-    """Test loading default configuration."""
+def test_load_default_config(tmp_path, monkeypatch):
+    """Test loading built-in defaults when no default config exists."""
+    monkeypatch.delenv("ROAMER_CONFIG", raising=False)
+    monkeypatch.setattr(
+        "roamer.platform.config.default_repo_config_path",
+        lambda: tmp_path / "missing-repo.yaml",
+    )
+
     config = load_config(None)
+
     assert "drivers" in config
     assert config["drivers"]["camera"] == "fswebcam"
     assert config["drivers"]["audio"] == "alsa"

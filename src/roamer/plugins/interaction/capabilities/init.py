@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import subprocess
 import time
+from pathlib import Path
 from typing import Any
 
 from roamer.platform.contract import ErrorCode
-from roamer.platform.output import success
+from roamer.platform.output import error, success
 from roamer.plugins.interaction.capabilities.base import Capability
 from roamer.plugins.interaction.drivers.bluetooth.bluez import BluezDriver
 
@@ -20,6 +22,18 @@ class InitCapability(Capability):
         init_config = config.get("init", {})
 
         self._speaker_mac = bt_config.get("speaker_mac")
+        self._configure_proxy_on_startup = bool(
+            init_config.get("configure_proxy_on_startup", False)
+        )
+        self._proxy_init_script = str(
+            init_config.get(
+                "proxy_init_script",
+                "scripts/init-roamer-proxy.sh",
+            )
+        )
+        self._proxy_init_timeout_sec = float(
+            init_config.get("proxy_init_timeout_sec", 20.0)
+        )
         self._connect_speaker_on_startup = bool(
             init_config.get("connect_speaker_on_startup", False)
         )
@@ -42,10 +56,82 @@ class InitCapability(Capability):
         """Run boot/startup initialization tasks."""
         steps: list[dict[str, Any]] = []
 
+        if self._configure_proxy_on_startup:
+            proxy_step = self._configure_proxy_step()
+            steps.append(proxy_step)
+            if not proxy_step.get("ok"):
+                return error(
+                    "proxy_init_failed",
+                    proxy_step.get("message") or "Proxy initialization failed",
+                    error_code="proxy.init.failed",
+                    initialized=False,
+                    steps=steps,
+                )
+
         if self._connect_speaker_on_startup:
             steps.append(self._connect_speaker_step())
 
         return success(initialized=True, steps=steps)
+
+    def _configure_proxy_step(self) -> dict[str, Any]:
+        script = Path(self._proxy_init_script).expanduser()
+        if not script.exists():
+            return {
+                "name": "proxy_init",
+                "ok": False,
+                "skipped": True,
+                "reason": "proxy_init_script_not_found",
+                "script": str(script),
+            }
+
+        try:
+            result = subprocess.run(
+                [str(script)],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=self._proxy_init_timeout_sec,
+            )
+        except subprocess.TimeoutExpired as exc:
+            return {
+                "name": "proxy_init",
+                "ok": False,
+                "script": str(script),
+                "error": "proxy_init_timeout",
+                "message": f"Proxy init timed out after {self._proxy_init_timeout_sec}s",
+                "stdout": self._decode_process_text(exc.stdout),
+                "stderr": self._decode_process_text(exc.stderr),
+            }
+        except OSError as exc:
+            return {
+                "name": "proxy_init",
+                "ok": False,
+                "script": str(script),
+                "error": "proxy_init_failed",
+                "message": str(exc),
+            }
+
+        stdout = self._decode_process_text(result.stdout)
+        stderr = self._decode_process_text(result.stderr)
+        proxy = stdout.strip().splitlines()[-1] if stdout.strip() else ""
+        return {
+            "name": "proxy_init",
+            "ok": result.returncode == 0,
+            "script": str(script),
+            "proxy": proxy,
+            "exit_code": result.returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+            "error": None if result.returncode == 0 else "proxy_init_failed",
+        }
+
+    @staticmethod
+    def _decode_process_text(value: str | bytes | None) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        return value
 
     def _connect_speaker_step(self) -> dict[str, Any]:
         if not self._speaker_mac:

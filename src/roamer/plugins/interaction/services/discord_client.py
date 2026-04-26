@@ -17,6 +17,21 @@ def _utc_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
 
+def _mention_prefix(discord_cfg: dict[str, Any]) -> str:
+    """Return a Discord mention prefix for bot-to-bot fallback routing."""
+    mention_user_id = str(discord_cfg.get("mention_user_id") or "").strip()
+    mention_role_id = str(discord_cfg.get("mention_role_id") or "").strip()
+    mention_raw = str(discord_cfg.get("mention") or "").strip()
+
+    if mention_user_id:
+        return f"<@{mention_user_id}> "
+    if mention_role_id:
+        return f"<@&{mention_role_id}> "
+    if mention_raw:
+        return mention_raw + " "
+    return ""
+
+
 def send_fallback(
     text: str,
     *,
@@ -52,9 +67,12 @@ def send_fallback(
         "timestamp": _utc_iso(),
     }
 
-    body = {
-        "content": "[roamer-fallback] " + json.dumps(payload, ensure_ascii=False),
-    }
+    content = (
+        _mention_prefix(discord_cfg)
+        + "[roamer-fallback] "
+        + json.dumps(payload, ensure_ascii=False)
+    )
+    body = {"content": content}
 
     req = request.Request(
         url=f"https://discord.com/api/v10/channels/{channel_id}/messages",
@@ -71,7 +89,7 @@ def send_fallback(
         with request.urlopen(req, timeout=timeout_sec) as resp:
             status = getattr(resp, "status", 200)
             if 200 <= status < 300:
-                return success(sent=True, status=status, payload=payload)
+                return success(sent=True, status=status, payload=payload, content=content)
             return error(
                 "converse_discord_send_failed",
                 f"Discord returned unexpected status: {status}",
