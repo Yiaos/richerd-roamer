@@ -57,6 +57,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "funasr": {
         "model": "paraformer-zh-streaming",
+        "disable_update": True,
     },
     "valetudo": {
         "timeout_sec": 8.0,
@@ -71,7 +72,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "converse": {
         "enabled": True,
-        "silence_timeout": 8.0,
+        "silence_timeout": 2.5,
         "max_turns": 10,
         "no_sound_default": False,
         "wakeword": {
