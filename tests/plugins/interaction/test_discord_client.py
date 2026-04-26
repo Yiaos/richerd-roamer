@@ -47,7 +47,22 @@ def test_send_fallback_success() -> None:
     assert result["payload"]["turn_id"] == 1
     assert result["payload"]["text"] == "hello"
     assert result["content"].startswith("[roamer-fallback] ")
+    assert "请回复给用户。" in result["content"]
     assert "timestamp" in result["payload"]
+
+
+def test_send_fallback_uses_configured_reply_instruction() -> None:
+    with patch("os.getenv", return_value="token"):
+        with patch("urllib.request.urlopen", return_value=_Resp()):
+            result = send_fallback(
+                "hello",
+                config=_cfg(reply_instruction="处理后调用 speak 回答"),
+                session_id="s1",
+                turn_id=1,
+            )
+
+    assert result["ok"] is True
+    assert "处理后调用 speak 回答" in result["content"]
 
 
 def test_send_fallback_prefixes_user_mention() -> None:

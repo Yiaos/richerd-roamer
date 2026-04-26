@@ -40,7 +40,9 @@ def test_converse_r1_no_wakeword_local_intent_then_exit() -> None:
             return {"ok": True, "played": True}
         return {"ok": True}
 
-    with patch("roamer.plugins.interaction.capabilities.converse.run_action", side_effect=_run_action):
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.run_action", side_effect=_run_action
+    ):
         result = cap.run(no_wakeword=True, timeout=0.1, no_sound=True, max_turns=3)
 
     assert result["ok"] is True
@@ -63,7 +65,9 @@ def test_converse_r1_no_wakeword_fallback_route() -> None:
             return listen_seq.pop(0)
         return {"ok": True}
 
-    with patch("roamer.plugins.interaction.capabilities.converse.run_action", side_effect=_run_action):
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.run_action", side_effect=_run_action
+    ):
         with patch(
             "roamer.plugins.interaction.capabilities.converse.send_fallback",
             return_value={"ok": True, "sent": False, "skipped": True},
@@ -90,7 +94,10 @@ def test_converse_listen_failure_returns_canonical_error() -> None:
 def test_converse_wakeword_mode_driver_unavailable() -> None:
     cap = ConverseCapability(_base_config())
 
-    with patch("roamer.plugins.interaction.capabilities.converse.get_driver", side_effect=RuntimeError("no driver")):
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.get_driver",
+        side_effect=RuntimeError("no driver"),
+    ):
         result = cap.run(no_wakeword=False, timeout=0.1, no_sound=True, max_turns=1)
 
     assert result["ok"] is False
@@ -110,9 +117,38 @@ def test_converse_wakeword_timeout_returns_completed_without_turns() -> None:
         def wait_hit(self, timeout: float):
             return False
 
-    with patch("roamer.plugins.interaction.capabilities.converse.get_driver", return_value=_Driver()):
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.get_driver", return_value=_Driver()
+    ):
         result = cap.run(no_wakeword=False, timeout=0.1, no_sound=True, max_turns=1)
 
     assert result["ok"] is True
     assert result["reason"] == "wakeword_timeout"
     assert result["turns"] == []
+
+
+def test_converse_r1_spoken_reminder_routes_to_remind_schedule() -> None:
+    cap = ConverseCapability(_base_config())
+    calls = []
+
+    def _run_action(name: str, **kwargs):
+        calls.append((name, kwargs))
+        if name == "listen":
+            return {"ok": True, "text": "十秒后提醒我喝水"}
+        if name == "remind":
+            return {"ok": True, "scheduled": True, **kwargs}
+        if name == "speak":
+            return {"ok": True, "played": True}
+        return {"ok": True}
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.run_action", side_effect=_run_action
+    ):
+        result = cap.run(no_wakeword=True, timeout=0.1, no_sound=False, max_turns=1)
+
+    assert result["ok"] is True
+    turn = result["turns"][0]
+    assert turn["route"] == "local"
+    assert turn["action"] == "remind.schedule"
+    assert turn["slots"] == {"delay_sec": 10.0, "text": "喝水"}
+    assert ("remind", {"delay_sec": 10.0, "text": "喝水"}) in calls

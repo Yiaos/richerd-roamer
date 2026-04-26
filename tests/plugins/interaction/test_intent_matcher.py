@@ -3,7 +3,6 @@
 from roamer.platform.contract import ErrorCode
 from roamer.plugins.interaction.services.intent import match_intent
 
-
 DEFAULT_INTENTS = [
     {"name": "time_now", "action": "time.now", "patterns": ["现在几点", "几点了"]},
     {"name": "status", "action": "sense", "patterns": ["你在哪", "状态"]},
@@ -41,3 +40,21 @@ def test_match_intent_extracts_basic_location_slot() -> None:
     result = match_intent("去客厅", DEFAULT_INTENTS)
     assert result["ok"] is True
     assert result["slots"].get("location") == "客厅"
+
+
+def test_match_intent_extracts_chinese_spoken_reminder() -> None:
+    result = match_intent("十秒后提醒我喝水", [])
+
+    assert result["ok"] is True
+    assert result["matched"] is True
+    assert result["action"] == "remind.schedule"
+    assert result["slots"] == {"delay_sec": 10.0, "text": "喝水"}
+
+
+def test_match_intent_extracts_minute_reminder_with_default_text() -> None:
+    result = match_intent("5分钟后提醒我", [])
+
+    assert result["ok"] is True
+    assert result["matched"] is True
+    assert result["action"] == "remind.schedule"
+    assert result["slots"] == {"delay_sec": 300.0, "text": "提醒"}

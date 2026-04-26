@@ -215,3 +215,16 @@ def test_bt_connect_dispatches_via_registry_run_action():
 
     assert result.exit_code == 0
     mock_run_action.assert_called_once_with("bt.connect", address="AA:BB:CC:DD:EE:FF")
+
+
+def test_remind_dispatches_via_registry_run_action():
+    """remind command should parse delay and dispatch through run_action."""
+    runner = CliRunner()
+
+    with patch("roamer.cli.main.run_action") as mock_run_action:
+        mock_run_action.return_value = {"ok": True, "scheduled": True}
+
+        result = runner.invoke(main, ["remind", "--after", "5m", "喝水"])
+
+    assert result.exit_code == 0
+    mock_run_action.assert_called_once_with("remind", delay_sec=300.0, text="喝水")

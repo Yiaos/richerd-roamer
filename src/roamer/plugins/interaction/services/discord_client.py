@@ -67,9 +67,15 @@ def send_fallback(
         "timestamp": _utc_iso(),
     }
 
+    instruction = str(
+        discord_cfg.get("reply_instruction")
+        or "请回复给用户。"
+    )
     content = (
         _mention_prefix(discord_cfg)
         + "[roamer-fallback] "
+        + instruction
+        + "\n"
         + json.dumps(payload, ensure_ascii=False)
     )
     body = {"content": content}

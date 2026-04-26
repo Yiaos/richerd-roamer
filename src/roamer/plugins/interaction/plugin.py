@@ -13,6 +13,7 @@ from roamer.plugins.interaction.actions.bt_connect import BtConnectAction
 from roamer.plugins.interaction.actions.bt_status import BtStatusAction
 from roamer.plugins.interaction.actions.converse import ConverseAction
 from roamer.plugins.interaction.actions.listen import ListenAction
+from roamer.plugins.interaction.actions.remind import RemindAction
 from roamer.plugins.interaction.actions.speak import SpeakAction
 from roamer.plugins.interaction.capabilities.init import InitCapability
 
@@ -47,6 +48,7 @@ def _lazy_runner(
 def register(registry: PluginRegistry, config: dict[str, Any]) -> None:
     """Register interaction actions into plugin registry."""
     registry.register("listen", _lazy_runner(ListenAction, config))
+    registry.register("remind", _lazy_runner(RemindAction, config))
     registry.register("speak", _lazy_runner(SpeakAction, config))
     registry.register("converse", _lazy_runner(ConverseAction, config))
     registry.register("audio.record", _lazy_runner(AudioRecordAction, config))
