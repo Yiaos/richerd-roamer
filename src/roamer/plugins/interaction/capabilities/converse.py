@@ -173,6 +173,23 @@ class ConverseCapability(Capability):
                     now_text = dt.datetime.now().strftime("现在是 %H:%M")
                     speak_result = self._safe_speak(now_text, no_sound=no_sound)
                     turn_info.update({"route": "local", "action": action, "speak": speak_result})
+                elif action == "remind.schedule":
+                    slots = dict(intent_result.get("slots") or {})
+                    action_result = run_action(
+                        "remind.schedule",
+                        delay_sec=float(slots.get("delay_sec", 0)),
+                        text=str(slots.get("text") or "提醒"),
+                    )
+                    turn_info.update(
+                        {
+                            "route": "local",
+                            "action": action,
+                            "slots": slots,
+                            "action_result": action_result,
+                        }
+                    )
+                    if action_result.get("ok"):
+                        self._safe_speak("好，已设置提醒", no_sound=no_sound)
                 else:
                     self._ensure_local_intent_actions_registered()
                     action_result = run_action(action)
