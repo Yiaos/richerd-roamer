@@ -49,6 +49,7 @@ silero:
 
 funasr:
   model: paraformer-zh-streaming
+  disable_update: true
 
 valetudo:
   host: 10.0.0.226
@@ -72,7 +73,7 @@ motion:
 # Converse (voice wake + dialog loop)
 converse:
   enabled: true
-  silence_timeout: 8.0
+  silence_timeout: 2.5
   max_turns: 1
   no_sound_default: false
 

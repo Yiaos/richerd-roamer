@@ -100,6 +100,21 @@ class TestFunASRDriver:
         assert "funasr noisy banner" not in captured.out
         assert "funasr noisy banner" in captured.err
 
+
+    def test_load_model_passes_disable_update_to_funasr(self):
+        """Test FunASR update checks are disabled by default/config."""
+        driver = FunASRDriver({"model": "paraformer-zh", "disable_update": True})
+        mock_auto_model = MagicMock(return_value=MagicMock())
+
+        with patch.dict("sys.modules", {"funasr": MagicMock(AutoModel=mock_auto_model)}):
+            loaded = driver._load_model()
+
+        assert loaded is True
+        mock_auto_model.assert_called_once_with(
+            model="paraformer-zh",
+            disable_update=True,
+        )
+
     def test_load_model_import_error(self):
         """Test when funasr not installed."""
         driver = FunASRDriver({"model": "paraformer-zh"})

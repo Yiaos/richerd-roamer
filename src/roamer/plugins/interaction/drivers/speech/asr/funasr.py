@@ -38,10 +38,11 @@ class FunASRDriver(ASRDriver):
             return False
 
         model_name = self.config.get("model", "paraformer-zh-streaming")
+        disable_update = bool(self.config.get("disable_update", True))
 
         try:
             with contextlib.redirect_stdout(sys.stderr):
-                self._model = AutoModel(model=model_name)
+                self._model = AutoModel(model=model_name, disable_update=disable_update)
             return True
         except Exception:
             return False
