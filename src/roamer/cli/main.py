@@ -59,6 +59,7 @@ def _ensure_interaction_plugin_registered(config: dict) -> None:
     for action_name in (
         "listen",
         "speak",
+        "remind",
         "converse",
         "audio.record",
         "audio.play",
@@ -156,6 +157,24 @@ def speak(
         style=style,
     )
     emit_contract_result(ctx, "speak", result)
+
+
+@main.command()
+@click.option("--after", "delay", required=True, help="Delay before reminder, e.g. 60s, 5m, 10分钟")
+@click.argument("text")
+@click.pass_context
+def remind(ctx: click.Context, delay: str, text: str) -> None:
+    """Schedule a spoken reminder."""
+    from roamer.plugins.interaction.capabilities.remind import parse_delay
+
+    try:
+        delay_sec = parse_delay(delay)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+
+    _ensure_interaction_plugin_registered(ctx.obj["config"])
+    result = run_action("remind", delay_sec=delay_sec, text=text)
+    emit_contract_result(ctx, "remind", result)
 
 
 # Listen - voice input
