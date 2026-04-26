@@ -135,7 +135,7 @@ def test_converse_r1_spoken_reminder_routes_to_remind_schedule() -> None:
         calls.append((name, kwargs))
         if name == "listen":
             return {"ok": True, "text": "十秒后提醒我喝水"}
-        if name == "remind.schedule":
+        if name == "remind":
             return {"ok": True, "scheduled": True, **kwargs}
         if name == "speak":
             return {"ok": True, "played": True}
@@ -151,4 +151,4 @@ def test_converse_r1_spoken_reminder_routes_to_remind_schedule() -> None:
     assert turn["route"] == "local"
     assert turn["action"] == "remind.schedule"
     assert turn["slots"] == {"delay_sec": 10.0, "text": "喝水"}
-    assert ("remind.schedule", {"delay_sec": 10.0, "text": "喝水"}) in calls
+    assert ("remind", {"delay_sec": 10.0, "text": "喝水"}) in calls

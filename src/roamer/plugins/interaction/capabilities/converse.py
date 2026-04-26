@@ -176,7 +176,7 @@ class ConverseCapability(Capability):
                 elif action == "remind.schedule":
                     slots = dict(intent_result.get("slots") or {})
                     action_result = run_action(
-                        "remind.schedule",
+                        "remind",
                         delay_sec=float(slots.get("delay_sec", 0)),
                         text=str(slots.get("text") or "提醒"),
                     )
