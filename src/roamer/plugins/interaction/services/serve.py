@@ -21,7 +21,7 @@ class RoamerServeRuntime:
     def __init__(self, config: dict[str, Any]):
         self.config = config
         self._registered = False
-        self._listen_action = ListenAction(config)
+        self._listen_action: ListenAction | None = None
 
     def ensure_registered(self) -> None:
         """Register interaction actions once for this process."""
@@ -40,6 +40,8 @@ class RoamerServeRuntime:
         ):
             registry.remove(action_name)
         register_interaction_plugin(registry, self.config)
+        if self._listen_action is None:
+            self._listen_action = ListenAction(self.config)
         registry.remove("listen")
         registry.register("listen", self._listen_action.run)
         self._registered = True
