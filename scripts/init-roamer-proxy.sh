@@ -4,9 +4,11 @@ set -euo pipefail
 # Auto-detect a usable HTTP(S) proxy for Roamer.
 #
 # Strategy:
-#   1. Build LAN candidates and prefer hosts with port 7890 open.
-#   2. If no LAN proxy works, probe online Tailscale peers on port 7890.
-#   3. Write the first working proxy to the Roamer env file, or fail loudly.
+#   1. Treat any existing proxy in ENV_FILE as cache and test it first.
+#   2. If cached proxy is missing or unusable, clear proxy env values.
+#   3. Build LAN candidates and prefer hosts with port 7890 open.
+#   4. If no LAN proxy works, probe online Tailscale peers on port 7890.
+#   5. Write the first working proxy to ENV_FILE; if discovery fails, leave proxy unset.
 
 PORT="${ROAMER_PROXY_PORT:-7890}"
 ENV_FILE="${ROAMER_ENV_FILE:-$HOME/.config/roamer/env}"
@@ -33,14 +35,44 @@ is_port_open() {
   probe_proxy "$host" >/dev/null 2>&1
 }
 
-probe_proxy() {
-  local host="$1"
-  local proxy="http://${host}:${PORT}"
+probe_proxy_url() {
+  local proxy="$1"
   if curl -fsS --noproxy '' --connect-timeout "$CONNECT_TIMEOUT" --max-time "$MAX_TIME" -x "$proxy" "$TEST_URL" >/dev/null 2>&1; then
     printf '%s\n' "$proxy"
     return 0
   fi
   return 1
+}
+
+probe_proxy() {
+  local host="$1"
+  probe_proxy_url "http://${host}:${PORT}"
+}
+
+current_proxy_from_env() {
+  [[ -f "$ENV_FILE" ]] || return 0
+  awk -F= '
+    /^(export )?(HTTPS_PROXY|HTTP_PROXY|ALL_PROXY|https_proxy|http_proxy|all_proxy)=/ {
+      value=$2
+      gsub(/^"|"$/, "", value)
+      gsub(/^'"'"'|'"'"'$/, "", value)
+      print value
+      exit
+    }
+  ' "$ENV_FILE"
+}
+
+clear_proxy_env() {
+  mkdir -p "$(dirname "$ENV_FILE")"
+  touch "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+
+  local tmp
+  tmp="$(mktemp)"
+  grep -vE '^(export )?(HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|http_proxy|https_proxy|all_proxy|NO_PROXY|no_proxy)=' "$ENV_FILE" > "$tmp" || true
+  cat "$tmp" > "$ENV_FILE"
+  rm -f "$tmp"
+  chmod 600 "$ENV_FILE"
 }
 
 lan_prefixes() {
@@ -146,7 +178,22 @@ write_proxy_env() {
 }
 
 find_proxy() {
-  local host proxy
+  local host proxy cached_proxy
+
+  cached_proxy="$(current_proxy_from_env)"
+  if [[ -n "$cached_proxy" ]]; then
+    log "testing cached proxy ${cached_proxy}"
+    if probe_proxy_url "$cached_proxy" >/dev/null; then
+      log "cached proxy is usable"
+      printf '%s\n' "$cached_proxy"
+      return 0
+    fi
+    log "cached proxy is unusable; clearing proxy env"
+    clear_proxy_env
+  else
+    clear_proxy_env
+  fi
+
   log "probing LAN hosts with open port ${PORT}"
   while IFS= read -r host; do
     [[ -n "$host" ]] || continue
@@ -186,7 +233,8 @@ main() {
     exit 0
   fi
 
-  log "no usable proxy found on LAN or Tailscale hosts with open port ${PORT}"
+  clear_proxy_env
+  log "no usable proxy found on LAN or Tailscale hosts with open port ${PORT}; proxy env left unset"
   exit 1
 }
 
