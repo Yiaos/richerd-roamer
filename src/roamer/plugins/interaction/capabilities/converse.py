@@ -9,11 +9,14 @@ from typing import Any
 
 from roamer.platform.contract import ErrorCode
 from roamer.platform.output import error, success
+from roamer.platform.plugin_registry import registry
 from roamer.platform.runtime import run_action
 from roamer.plugins.interaction.capabilities.base import Capability
 from roamer.plugins.interaction.drivers.registry import get_driver
 from roamer.plugins.interaction.services.discord_client import send_fallback
 from roamer.plugins.interaction.services.intent import match_intent
+from roamer.plugins.motion.plugin import register as register_motion_plugin
+from roamer.plugins.perception.plugin import register as register_perception_plugin
 
 
 class ConverseCapability(Capability):
@@ -32,6 +35,21 @@ class ConverseCapability(Capability):
             return success(skipped=True, reason="no_sound")
         with self._audio_lock:
             return run_action("speak", text=text, save_path=None, play=True, style=None)
+
+    def _ensure_local_intent_actions_registered(self) -> None:
+        """Register non-interaction actions that local intents may dispatch."""
+        for action_name in (
+            "watch",
+            "sense",
+            "motion.status",
+            "motion.position",
+            "motion.locate",
+            "motion.home",
+            "motion.goto",
+        ):
+            registry.remove(action_name)
+        register_perception_plugin(registry, self.config)
+        register_motion_plugin(registry, self.config)
 
     def _fallback_via_discord(
         self,
@@ -156,8 +174,15 @@ class ConverseCapability(Capability):
                     speak_result = self._safe_speak(now_text, no_sound=no_sound)
                     turn_info.update({"route": "local", "action": action, "speak": speak_result})
                 else:
+                    self._ensure_local_intent_actions_registered()
                     action_result = run_action(action)
-                    turn_info.update({"route": "local", "action": action, "action_result": action_result})
+                    turn_info.update(
+                        {
+                            "route": "local",
+                            "action": action,
+                            "action_result": action_result,
+                        }
+                    )
                     if action_result.get("ok"):
                         self._safe_speak(f"已执行 {action}", no_sound=no_sound)
             else:
