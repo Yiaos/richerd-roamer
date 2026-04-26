@@ -63,6 +63,9 @@ class ErrorCode(StrEnum):
     CONVERSE_DISCORD_SEND_FAILED = "converse.discord.send_failed"
     CONVERSE_WAKEWORD_UNAVAILABLE = "converse.wakeword.unavailable"
     CONVERSE_LISTEN_FAILED = "converse.listen.failed"
+    SERVE_UNAVAILABLE = "serve.unavailable"
+    SERVE_TIMEOUT = "serve.timeout"
+    SERVE_REQUEST_FAILED = "serve.request_failed"
     CONFIG_INVALID = "config.invalid"
     DRIVER_NOT_FOUND = "driver.not_found"
     ACTION_NOT_FOUND = "action.not_found"
@@ -90,6 +93,9 @@ _CANONICAL_BY_LEGACY_ERROR: dict[str, str] = {
     "converse_wakeword_unavailable": ErrorCode.CONVERSE_WAKEWORD_UNAVAILABLE.value,
     "converse_listen_failed": ErrorCode.CONVERSE_LISTEN_FAILED.value,
     "converse_intent_invalid_action": ErrorCode.CONVERSE_INTENT_INVALID_ACTION.value,
+    "serve_unavailable": ErrorCode.SERVE_UNAVAILABLE.value,
+    "serve_timeout": ErrorCode.SERVE_TIMEOUT.value,
+    "serve_request_failed": ErrorCode.SERVE_REQUEST_FAILED.value,
 }
 
 LEGACY_ERROR_MAP = _CANONICAL_BY_LEGACY_ERROR
@@ -106,6 +112,7 @@ ERROR_EXIT_CATEGORY: dict[str, ExitCategory] = {
     ErrorCode.BLUETOOTH_DISCONNECT_TIMEOUT.value: ExitCategory.TIMEOUT,
     ErrorCode.MOTION_GOTO_TIMEOUT.value: ExitCategory.TIMEOUT,
     ErrorCode.MOTION_HOME_TIMEOUT.value: ExitCategory.TIMEOUT,
+    ErrorCode.SERVE_TIMEOUT.value: ExitCategory.TIMEOUT,
     ErrorCode.DEPENDENCY_AUDIO_ARECORD_MISSING.value: ExitCategory.DEPENDENCY,
     ErrorCode.DEPENDENCY_AUDIO_APLAY_MISSING.value: ExitCategory.DEPENDENCY,
     ErrorCode.DEPENDENCY_AUDIO_FFMPEG_MISSING.value: ExitCategory.DEPENDENCY,

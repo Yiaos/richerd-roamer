@@ -227,3 +227,56 @@ def test_init_fails_when_proxy_init_command_fails(sample_config, tmp_path) -> No
     assert len(result["steps"]) == 1
     assert result["steps"][0]["exit_code"] == 7
     assert result["steps"][0]["error"] == "proxy_init_failed"
+
+
+def test_init_reports_active_serve_when_enabled(sample_config) -> None:
+    sample_config["init"] = {"ensure_serve_on_startup": True}
+
+    with patch("roamer.plugins.interaction.capabilities.init.subprocess.run") as mock_run:
+        mock_run.return_value.returncode = 0
+        mock_run.return_value.stdout = ""
+        mock_run.return_value.stderr = ""
+        capability = InitCapability(sample_config)
+        result = capability.init()
+
+    step = result["steps"][0]
+    assert step["name"] == "serve_init"
+    assert step["ok"] is True
+    assert step["already_active"] is True
+    mock_run.assert_called_once()
+
+
+def test_init_starts_serve_when_inactive(sample_config) -> None:
+    sample_config["init"] = {"ensure_serve_on_startup": True}
+
+    inactive = MagicMock(returncode=3, stdout="", stderr="")
+    started = MagicMock(returncode=0, stdout="started", stderr="")
+    with patch(
+        "roamer.plugins.interaction.capabilities.init.subprocess.run",
+        side_effect=[inactive, started],
+    ):
+        capability = InitCapability(sample_config)
+        result = capability.init()
+
+    step = result["steps"][0]
+    assert step["name"] == "serve_init"
+    assert step["ok"] is True
+    assert step["already_active"] is False
+    assert step["stdout"] == "started"
+
+
+def test_init_structures_systemd_unavailable(sample_config) -> None:
+    sample_config["init"] = {"ensure_serve_on_startup": True}
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.init.subprocess.run",
+        side_effect=OSError("no systemctl"),
+    ):
+        capability = InitCapability(sample_config)
+        result = capability.init()
+
+    step = result["steps"][0]
+    assert step["name"] == "serve_init"
+    assert step["ok"] is False
+    assert step["skipped"] is True
+    assert step["reason"] == "systemd_unavailable"

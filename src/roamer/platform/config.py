@@ -30,6 +30,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "init": {
         "connect_speaker_on_startup": False,
         "configure_proxy_on_startup": False,
+        "ensure_serve_on_startup": False,
+        "serve_start_timeout_sec": 10.0,
         "proxy_init_script": "",
         "proxy_init_timeout_sec": 20.0,
         "bluetooth_controller_ready_timeout_sec": 20.0,
@@ -70,6 +72,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "bluetooth": {
         "speaker_mac": None,
     },
+    "serve": {
+        "enabled": True,
+        "socket": "~/.config/roamer/roamer.sock",
+        "request_timeout_sec": 60.0,
+        "fallback_to_cli": True,
+        "prewarm": {
+            "asr": True,
+            "vad": True,
+            "tts": False,
+        },
+    },
     "converse": {
         "enabled": True,
         "silence_timeout": 2.5,
@@ -93,6 +106,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
                 "patterns": ["你在哪个位置", "当前位置"],
             },
         ],
+        "endpoint": {
+            "mode": "fixed_recording",
+            "silence_sec": 2.0,
+            "min_speech_sec": 0.2,
+            "max_record_sec": 10.0,
+            "pre_speech_padding_sec": 0.3,
+        },
         "discord": {
             "enabled": False,
             "channel_id": "",

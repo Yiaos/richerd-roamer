@@ -1,0 +1,14 @@
+[Unit]
+Description=Roamer Serve Daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/richerd/worksp/richerd-roamer
+ExecStart=/home/richerd/.venv/roamer/bin/roamer serve --prewarm
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -109,3 +109,21 @@ def test_main_uses_no_config_when_defaults_missing(monkeypatch, tmp_path: Path) 
 
     assert result.exit_code == 0
     assert captured["path"] is None
+
+
+def test_load_config_merges_serve_defaults(monkeypatch, tmp_path: Path) -> None:
+    repo_config = tmp_path / "config.yaml"
+    repo_config.write_text(
+        "serve:\n  fallback_to_cli: false\nconverse:\n  endpoint:\n    silence_sec: 1.5\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("ROAMER_CONFIG", raising=False)
+    monkeypatch.setattr("roamer.platform.config.default_repo_config_path", lambda: repo_config)
+
+    config = load_config()
+
+    assert config["serve"]["fallback_to_cli"] is False
+    assert config["serve"]["enabled"] is True
+    assert config["converse"]["endpoint"]["silence_sec"] == 1.5
+    assert config["converse"]["endpoint"]["mode"] == "fixed_recording"

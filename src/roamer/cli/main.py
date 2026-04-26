@@ -6,11 +6,13 @@ from pathlib import Path
 import click
 
 from roamer.platform.config import load_config
-from roamer.platform.contract import exit_category_for_error
-from roamer.platform.output import attach_contract_fields
+from roamer.platform.contract import ErrorCode, exit_category_for_error
+from roamer.platform.output import attach_contract_fields, error
 from roamer.platform.plugin_registry import registry
 from roamer.platform.runtime import run_action
 from roamer.plugins.interaction.plugin import register as register_interaction_plugin
+from roamer.plugins.interaction.services.ipc import IpcClientError, request_via_socket
+from roamer.plugins.interaction.services.serve import RoamerServeRuntime, serve_forever
 from roamer.plugins.motion.plugin import register as register_motion_plugin
 from roamer.plugins.perception.plugin import register as register_perception_plugin
 
@@ -249,15 +251,101 @@ def converse(
         else int(converse_config.get("max_turns", 10))
     )
 
+    serve_config = config.get("serve", {})
+    args = {
+        "no_wakeword": effective_no_wakeword,
+        "timeout": effective_timeout,
+        "no_sound": effective_no_sound,
+        "max_turns": effective_max_turns,
+    }
+    if bool(serve_config.get("enabled", False)):
+        try:
+            result = request_via_socket(
+                str(serve_config.get("socket", "~/.config/roamer/roamer.sock")),
+                {"command": "converse", "args": args},
+                timeout_sec=float(serve_config.get("request_timeout_sec", 60.0)),
+            )
+            emit_contract_result(ctx, "converse", result)
+        except IpcClientError as exc:
+            if not bool(serve_config.get("fallback_to_cli", True)):
+                result = error(
+                    "serve_unavailable",
+                    f"Roamer serve unavailable: {exc}",
+                    error_code=ErrorCode.SERVE_UNAVAILABLE,
+                    served_by="none",
+                )
+                emit_contract_result(ctx, "converse", result)
+
     _ensure_interaction_plugin_registered(config)
-    result = run_action(
-        "converse",
-        no_wakeword=effective_no_wakeword,
-        timeout=effective_timeout,
-        no_sound=effective_no_sound,
-        max_turns=effective_max_turns,
-    )
+    result = run_action("converse", **args)
+    result["served_by"] = "cli"
     emit_contract_result(ctx, "converse", result)
+
+
+# Serve - long-running local daemon
+@main.group(invoke_without_command=True)
+@click.option("--socket", "socket_path", type=str, default=None, help="Unix socket path")
+@click.option("--prewarm", is_flag=True, help="Prewarm configured heavy drivers before serving")
+@click.pass_context
+def serve(ctx: click.Context, socket_path: str | None, prewarm: bool) -> None:
+    """Long-running Roamer local service."""
+    if ctx.invoked_subcommand is not None:
+        return
+
+    config = ctx.obj["config"]
+    serve_config = config.get("serve", {})
+    runtime = RoamerServeRuntime(config)
+    if prewarm:
+        runtime.prewarm()
+    serve_forever(
+        config,
+        socket_path or str(serve_config.get("socket", "~/.config/roamer/roamer.sock")),
+        runtime=runtime,
+    )
+
+
+@serve.command("ping")
+@click.pass_context
+def serve_ping(ctx: click.Context) -> None:
+    """Ping the configured Roamer serve socket."""
+    config = ctx.obj["config"]
+    serve_config = config.get("serve", {})
+    try:
+        result = request_via_socket(
+            str(serve_config.get("socket", "~/.config/roamer/roamer.sock")),
+            {"command": "ping", "args": {}},
+            timeout_sec=float(serve_config.get("request_timeout_sec", 60.0)),
+        )
+    except IpcClientError as exc:
+        result = error(
+            "serve_unavailable",
+            f"Roamer serve unavailable: {exc}",
+            error_code=ErrorCode.SERVE_UNAVAILABLE,
+            served_by="none",
+        )
+    emit_contract_result(ctx, "serve.ping", result)
+
+
+@serve.command("status")
+@click.pass_context
+def serve_status(ctx: click.Context) -> None:
+    """Get Roamer serve status."""
+    config = ctx.obj["config"]
+    serve_config = config.get("serve", {})
+    try:
+        result = request_via_socket(
+            str(serve_config.get("socket", "~/.config/roamer/roamer.sock")),
+            {"command": "status", "args": {}},
+            timeout_sec=float(serve_config.get("request_timeout_sec", 60.0)),
+        )
+    except IpcClientError as exc:
+        result = error(
+            "serve_unavailable",
+            f"Roamer serve unavailable: {exc}",
+            error_code=ErrorCode.SERVE_UNAVAILABLE,
+            served_by="none",
+        )
+    emit_contract_result(ctx, "serve.status", result)
 
 
 # Sense - self-state perception

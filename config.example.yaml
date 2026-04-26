@@ -13,6 +13,8 @@ drivers:
 init:
   connect_speaker_on_startup: true
   configure_proxy_on_startup: true
+  ensure_serve_on_startup: true
+  serve_start_timeout_sec: 10.0
   proxy_init_timeout_sec: 20.0
   bluetooth_controller_ready_timeout_sec: 20.0
   bluetooth_connect_retry_timeout_sec: 20.0
@@ -50,6 +52,16 @@ silero:
 funasr:
   model: paraformer-zh-streaming
   disable_update: true
+
+serve:
+  enabled: true
+  socket: ~/.config/roamer/roamer.sock
+  request_timeout_sec: 60.0
+  fallback_to_cli: true
+  prewarm:
+    asr: true
+    vad: true
+    tts: false
 
 valetudo:
   host: 10.0.0.100
@@ -100,6 +112,13 @@ converse:
     - name: position
       action: motion.position
       patterns: ["你在哪个位置", "当前位置"]
+
+  endpoint:
+    mode: fixed_recording
+    silence_sec: 2.0
+    min_speech_sec: 0.2
+    max_record_sec: 10.0
+    pre_speech_padding_sec: 0.3
 
   discord:
     enabled: false
