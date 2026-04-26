@@ -67,9 +67,16 @@ def send_fallback(
         "timestamp": _utc_iso(),
     }
 
+    instruction = (
+        "请处理这条 Roamer 语音请求。回复给用户时，"
+        "请同时通过 `ssh richerd@roamer 'roamer speak ...'` "
+        "让 Roamer 语音播报你的最终回复。"
+    )
     content = (
         _mention_prefix(discord_cfg)
         + "[roamer-fallback] "
+        + instruction
+        + "\n"
         + json.dumps(payload, ensure_ascii=False)
     )
     body = {"content": content}

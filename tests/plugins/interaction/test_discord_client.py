@@ -47,6 +47,7 @@ def test_send_fallback_success() -> None:
     assert result["payload"]["turn_id"] == 1
     assert result["payload"]["text"] == "hello"
     assert result["content"].startswith("[roamer-fallback] ")
+    assert "roamer speak" in result["content"]
     assert "timestamp" in result["payload"]
 
 
