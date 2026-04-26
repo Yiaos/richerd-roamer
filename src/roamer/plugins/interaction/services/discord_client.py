@@ -69,7 +69,7 @@ def send_fallback(
 
     instruction = str(
         discord_cfg.get("reply_instruction")
-        or "请处理这条 Roamer fallback 请求，并回复给用户。"
+        or "请回复给用户。"
     )
     content = (
         _mention_prefix(discord_cfg)

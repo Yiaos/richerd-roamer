@@ -110,4 +110,4 @@ converse:
     mention_user_id: ""
     mention_role_id: ""
     mention: ""
-    reply_instruction: "请处理这条 Roamer fallback 请求，并回复给用户。"
+    reply_instruction: "请回复给用户。"
