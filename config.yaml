@@ -111,6 +111,6 @@ converse:
     mention_role_id: ""
     mention: ""
     reply_instruction: >-
-      请处理这条 Roamer 语音请求。回复给用户时，
+      请处理这条 Roamer fallback 请求。回复给用户时，
       请同时通过 `ssh richerd@roamer 'roamer speak ...'`
       让 Roamer 语音播报你的最终回复。
