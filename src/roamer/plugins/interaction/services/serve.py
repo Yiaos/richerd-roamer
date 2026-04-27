@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import socket
 from pathlib import Path
 from typing import Any
@@ -53,7 +54,12 @@ class RoamerServeRuntime:
         drivers inside the long-running process once constructed by a request. The hook is
         explicit so ASR/VAD prewarming can become real without changing the IPC contract.
         """
-        return success(prewarmed=True)
+        self.ensure_registered()
+        return success(
+            prewarmed=True,
+            registered=self._registered,
+            listen_cached=self._listen_action is not None,
+        )
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         """Handle one decoded serve request."""
@@ -70,7 +76,13 @@ class RoamerServeRuntime:
         if command == "ping":
             return success(pong=True, served_by="daemon")
         if command == "status":
-            return success(ready=True, registered=self._registered, served_by="daemon")
+            return success(
+                alive=True,
+                ready=True,
+                registered=self._registered,
+                listen_cached=self._listen_action is not None,
+                served_by="daemon",
+            )
         if command == "converse":
             self.ensure_registered()
             result = run_action("converse", **args)
@@ -99,11 +111,28 @@ def serve_forever(
     path.unlink(missing_ok=True)
 
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
-        server.bind(str(path))
+        old_umask = os.umask(0o077)
+        try:
+            server.bind(str(path))
+        finally:
+            os.umask(old_umask)
+        path.chmod(0o600)
         server.listen(5)
         while True:
             conn, _ = server.accept()
             with conn:
-                request = read_request(conn)
-                response = runtime.handle(request) if request.get("ok", True) else request
-                write_response(conn, response)
+                conn.settimeout(float(config.get("serve", {}).get("request_timeout_sec", 60.0)))
+                try:
+                    request = read_request(conn)
+                    response = runtime.handle(request) if request.get("ok", True) else request
+                except Exception as exc:
+                    response = error(
+                        "serve_request_failed",
+                        f"Serve request failed: {exc}",
+                        error_code=ErrorCode.SERVE_REQUEST_FAILED,
+                        served_by="daemon",
+                    )
+                try:
+                    write_response(conn, response)
+                except OSError:
+                    continue

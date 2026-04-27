@@ -47,7 +47,14 @@ def request_via_socket(
 
 def read_request(conn: socket.socket) -> dict[str, Any]:
     """Read and decode one newline-delimited JSON request from a connection."""
-    raw = _readline(conn)
+    try:
+        raw = _readline(conn)
+    except IpcClientError as exc:
+        return error(
+            "serve_request_failed",
+            str(exc),
+            error_code=ErrorCode.SERVE_REQUEST_FAILED,
+        )
     if not raw:
         return error(
             "serve_request_failed",
@@ -76,8 +83,9 @@ def write_response(conn: socket.socket, response: dict[str, Any]) -> None:
     conn.sendall(json.dumps(response, ensure_ascii=False).encode("utf-8") + b"\n")
 
 
-def _readline(sock: socket.socket) -> bytes:
+def _readline(sock: socket.socket, max_bytes: int = 65536) -> bytes:
     chunks: list[bytes] = []
+    total = 0
     while True:
         chunk = sock.recv(1)
         if not chunk:
@@ -85,4 +93,7 @@ def _readline(sock: socket.socket) -> bytes:
         if chunk == b"\n":
             break
         chunks.append(chunk)
+        total += len(chunk)
+        if total > max_bytes:
+            raise IpcClientError("Serve request exceeded maximum size")
     return b"".join(chunks)

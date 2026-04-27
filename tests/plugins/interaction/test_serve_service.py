@@ -1,6 +1,7 @@
 """Tests for Roamer serve runtime and IPC."""
 
 import socket
+import threading
 
 from roamer.plugins.interaction.services.ipc import read_request, write_response
 from roamer.plugins.interaction.services.serve import RoamerServeRuntime
@@ -98,3 +99,45 @@ def test_serve_runtime_reuses_listen_action(monkeypatch) -> None:
     assert first["ok"] is True
     assert second["ok"] is True
     assert len(listen_instances) == 1
+
+
+def test_serve_runtime_prewarm_registers_and_caches_listen(monkeypatch) -> None:
+    listen_instances = []
+
+    class _ListenAction:
+        def __init__(self, config):
+            listen_instances.append(config)
+
+        def run(self, **kwargs):
+            return {"ok": True, "text": ""}
+
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.services.serve.ListenAction",
+        _ListenAction,
+    )
+
+    runtime = RoamerServeRuntime({})
+    result = runtime.prewarm()
+    status = runtime.handle({"command": "status", "args": {}})
+
+    assert result["ok"] is True
+    assert result["registered"] is True
+    assert result["listen_cached"] is True
+    assert status["registered"] is True
+    assert status["listen_cached"] is True
+    assert len(listen_instances) == 1
+
+
+def test_ipc_oversized_request_returns_error() -> None:
+    left, right = socket.socketpair()
+    sender = threading.Thread(target=left.sendall, args=(b"x" * 65537 + b"\n",))
+    try:
+        sender.start()
+        request = read_request(right)
+        assert request["ok"] is False
+        assert request["error_code"] == "serve.request_failed"
+        assert "maximum size" in request["message"]
+    finally:
+        left.close()
+        right.close()
+        sender.join(timeout=1)

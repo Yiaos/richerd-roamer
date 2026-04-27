@@ -280,3 +280,22 @@ def test_init_structures_systemd_unavailable(sample_config) -> None:
     assert step["ok"] is False
     assert step["skipped"] is True
     assert step["reason"] == "systemd_unavailable"
+
+
+def test_init_fails_top_level_when_serve_start_fails(sample_config) -> None:
+    sample_config["init"] = {"ensure_serve_on_startup": True}
+
+    inactive = MagicMock(returncode=3, stdout="", stderr="")
+    failed = MagicMock(returncode=1, stdout="", stderr="boom")
+    with patch(
+        "roamer.plugins.interaction.capabilities.init.subprocess.run",
+        side_effect=[inactive, failed],
+    ):
+        capability = InitCapability(sample_config)
+        result = capability.init()
+
+    assert result["ok"] is False
+    assert result["initialized"] is False
+    assert result["error_code"] == "serve.unavailable"
+    assert result["steps"][0]["name"] == "serve_init"
+    assert result["steps"][0]["error"] == "serve_start_failed"

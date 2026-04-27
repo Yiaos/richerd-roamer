@@ -78,7 +78,16 @@ class InitCapability(Capability):
             steps.append(self._connect_speaker_step())
 
         if self._ensure_serve_on_startup:
-            steps.append(self._ensure_serve_step())
+            serve_step = self._ensure_serve_step()
+            steps.append(serve_step)
+            if not serve_step.get("ok") and not serve_step.get("skipped"):
+                return error(
+                    "serve_unavailable",
+                    serve_step.get("message") or "Roamer serve failed to start",
+                    error_code=ErrorCode.SERVE_UNAVAILABLE,
+                    initialized=False,
+                    steps=steps,
+                )
 
         return success(initialized=True, steps=steps)
 

@@ -74,7 +74,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "serve": {
         "enabled": True,
-        "socket": "~/.config/roamer/roamer.sock",
+        "socket": "/run/roamer/roamer.sock",
         "request_timeout_sec": 60.0,
         "fallback_to_cli": True,
         "prewarm": {
