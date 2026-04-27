@@ -26,9 +26,15 @@ class ConverseCapability(Capability):
         super().__init__(config)
         self._audio_lock = threading.Lock()
 
-    def _safe_listen(self, timeout: float) -> dict[str, Any]:
+    def _safe_listen(self, timeout: float, *, use_endpointing: bool = False) -> dict[str, Any]:
         with self._audio_lock:
-            return run_action("listen", timeout=timeout, save_audio=None, debug=False)
+            return run_action(
+                "listen",
+                timeout=timeout,
+                save_audio=None,
+                debug=False,
+                use_endpointing=use_endpointing,
+            )
 
     def _safe_speak(self, text: str, no_sound: bool) -> dict[str, Any]:
         if no_sound:
@@ -98,6 +104,7 @@ class ConverseCapability(Capability):
         timeout: float = 8.0,
         no_sound: bool = False,
         max_turns: int = 10,
+        use_endpointing: bool = False,
     ) -> dict[str, Any]:
         converse_cfg = self.config.get("converse", {})
         intents = converse_cfg.get("intents", [])
@@ -123,23 +130,29 @@ class ConverseCapability(Capability):
                 self._safe_speak("在", no_sound=False)
 
         for turn_id in range(1, max_turns + 1):
-            listen_result = self._safe_listen(timeout=timeout)
+            listen_result = self._safe_listen(timeout=timeout, use_endpointing=use_endpointing)
             if not listen_result.get("ok"):
-                turns.append(
-                    {
-                        "turn_id": turn_id,
-                        "stage": "listen",
-                        "ok": False,
-                        "error_code": listen_result.get("error_code"),
-                    }
-                )
+                turn_error: dict[str, Any] = {
+                    "turn_id": turn_id,
+                    "stage": "listen",
+                    "ok": False,
+                    "error_code": listen_result.get("error_code"),
+                }
+                if "endpoint_metrics" in listen_result:
+                    turn_error["endpoint_metrics"] = listen_result["endpoint_metrics"]
+                turns.append(turn_error)
+                error_payload: dict[str, Any] = {
+                    "session_id": session_id,
+                    "turn_id": turn_id,
+                    "turns": turns,
+                }
+                if "endpoint_metrics" in listen_result:
+                    error_payload["endpoint_metrics"] = listen_result["endpoint_metrics"]
                 return error(
                     "converse_listen_failed",
                     "Converse listen stage failed",
                     error_code=ErrorCode.CONVERSE_LISTEN_FAILED,
-                    session_id=session_id,
-                    turn_id=turn_id,
-                    turns=turns,
+                    **error_payload,
                 )
 
             text = str(listen_result.get("text") or "").strip()
@@ -166,6 +179,8 @@ class ConverseCapability(Capability):
                 "matched": bool(intent_result.get("matched")),
                 "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
             }
+            if "endpoint_metrics" in listen_result:
+                turn_info["endpoint_metrics"] = listen_result["endpoint_metrics"]
 
             if intent_result.get("matched"):
                 action = str(intent_result.get("action"))

@@ -1,5 +1,6 @@
 """Interaction audio capability."""
 
+from collections.abc import Iterator
 from datetime import datetime
 from typing import Any
 
@@ -43,6 +44,18 @@ class AudioCapability(Capability):
             output = f"/tmp/roamer_rec_{timestamp}.wav"
 
         return self._driver.record(output, duration)
+
+    def stream_chunks(
+        self,
+        *,
+        chunk_duration_sec: float = 0.032,
+        max_duration_sec: float = 10.0,
+    ) -> Iterator[bytes]:
+        """Stream raw audio chunks from the configured audio driver."""
+        return self._driver.stream_chunks(
+            chunk_duration_sec=chunk_duration_sec,
+            max_duration_sec=max_duration_sec,
+        )
 
     def play(self, file: str) -> dict[str, Any]:
         """Play an audio file.

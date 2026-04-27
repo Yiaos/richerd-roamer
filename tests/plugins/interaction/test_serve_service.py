@@ -85,6 +85,47 @@ def test_ipc_invalid_json_returns_error() -> None:
         right.close()
 
 
+def test_serve_runtime_endpoint_converse_integration(monkeypatch) -> None:
+    config = {"converse": {"wakeword": {"enabled": False}, "endpoint": {"mode": "vad_endpoint"}}}
+    runtime = RoamerServeRuntime(config)
+    observed = []
+
+    class _ListenAction:
+        def __init__(self, config):
+            pass
+
+        def run(self, **kwargs):
+            observed.append(kwargs)
+            return {
+                "ok": True,
+                "text": "现在几点",
+                "endpoint_metrics": {"record_duration_sec": 0.7, "speech_duration_sec": 0.2},
+            }
+
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.services.serve.ListenAction",
+        _ListenAction,
+    )
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.capabilities.converse.send_fallback",
+        lambda *args, **kwargs: {"ok": True, "skipped": True},
+    )
+
+    result = runtime.handle(
+        {"command": "converse", "args": {"no_wakeword": True, "no_sound": True, "max_turns": 1}}
+    )
+
+    assert result["ok"] is True
+    assert result["served_by"] == "daemon"
+    assert observed == [
+        {"timeout": 8.0, "save_audio": None, "debug": False, "use_endpointing": True}
+    ]
+    assert result["turns"][0]["endpoint_metrics"] == {
+        "record_duration_sec": 0.7,
+        "speech_duration_sec": 0.2,
+    }
+
+
 def test_serve_runtime_reuses_listen_action(monkeypatch) -> None:
     listen_instances = []
 

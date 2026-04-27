@@ -127,6 +127,70 @@ def test_converse_wakeword_timeout_returns_completed_without_turns() -> None:
     assert result["turns"] == []
 
 
+def test_converse_endpointing_flag_forwards_endpoint_metrics() -> None:
+    config = _base_config()
+    cap = ConverseCapability(config)
+    calls = []
+
+    def _run_action(name: str, **kwargs):
+        calls.append((name, kwargs))
+        if name == "listen":
+            return {
+                "ok": True,
+                "text": "现在几点",
+                "endpoint_metrics": {
+                    "record_duration_sec": 0.8,
+                    "speech_duration_sec": 0.3,
+                    "endpoint_latency_sec": 0.2,
+                },
+            }
+        if name == "speak":
+            return {"ok": True, "played": True}
+        return {"ok": True}
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.run_action", side_effect=_run_action
+    ):
+        result = cap.run(
+            no_wakeword=True,
+            timeout=1.0,
+            no_sound=True,
+            max_turns=1,
+            use_endpointing=True,
+        )
+
+    assert result["ok"] is True
+    listen_calls = [kwargs for name, kwargs in calls if name == "listen"]
+    assert listen_calls == [
+        {"timeout": 1.0, "save_audio": None, "debug": False, "use_endpointing": True}
+    ]
+    assert result["turns"][0]["endpoint_metrics"] == {
+        "record_duration_sec": 0.8,
+        "speech_duration_sec": 0.3,
+        "endpoint_latency_sec": 0.2,
+    }
+
+
+def test_converse_endpointing_listen_failure_forwards_top_level_metrics() -> None:
+    config = _base_config()
+    cap = ConverseCapability(config)
+    metrics = {"record_duration_sec": 0.5, "speech_duration_sec": 0.0}
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.run_action",
+        return_value={
+            "ok": False,
+            "error_code": "speech.vad.no_speech",
+            "endpoint_metrics": metrics,
+        },
+    ):
+        result = cap.run(no_wakeword=True, no_sound=True, max_turns=1, use_endpointing=True)
+
+    assert result["ok"] is False
+    assert result["endpoint_metrics"] == metrics
+    assert result["turns"][0]["endpoint_metrics"] == metrics
+
+
 def test_converse_r1_spoken_reminder_routes_to_remind_schedule() -> None:
     cap = ConverseCapability(_base_config())
     calls = []

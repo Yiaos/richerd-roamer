@@ -16,6 +16,11 @@ from roamer.platform.output import error, success
 from roamer.plugins.interaction.capabilities.audio import AudioCapability
 from roamer.plugins.interaction.capabilities.base import Capability
 from roamer.plugins.interaction.drivers.registry import get_driver
+from roamer.plugins.interaction.services.endpointing import (
+    ChunkVadAdapter,
+    EndpointConfig,
+    EndpointRecorder,
+)
 
 
 class ListenCapability(Capability):
@@ -61,6 +66,7 @@ class ListenCapability(Capability):
         timeout: float = 10.0,
         save_audio: str | None = None,
         debug: bool = False,
+        use_endpointing: bool = False,
     ) -> dict[str, Any]:
         """Listen and transcribe speech.
 
@@ -81,14 +87,53 @@ class ListenCapability(Capability):
         audio_path = save_audio if save_audio else self._create_temp_audio("roamer_rec_")
         trimmed_path = self._create_temp_audio("roamer_speech_")
         cleanup_audio = save_audio is None
+        endpoint_metrics: dict[str, Any] | None = None
 
         try:
             # Record audio
-            log(f"Recording for {timeout}s to {audio_path}")
-            record_result = self._audio.record(duration=timeout, output=audio_path)
+            if use_endpointing:
+                endpoint_config = EndpointConfig.from_config(self.config, timeout=timeout)
+                log(f"Endpoint recording to {audio_path}: {endpoint_config}")
+                try:
+                    recorder = EndpointRecorder(
+                        chunk_source=self._audio.stream_chunks(
+                            chunk_duration_sec=endpoint_config.chunk_duration_sec,
+                            max_duration_sec=endpoint_config.max_record_sec,
+                        ),
+                        vad_probability=ChunkVadAdapter(
+                            self._vad,
+                            threshold=endpoint_config.threshold,
+                        ).probability,
+                        config=endpoint_config,
+                        output_path=audio_path,
+                    )
+                    record_result = recorder.record()
+                except NotImplementedError as exc:
+                    return error(
+                        "audio_record_failed",
+                        str(exc),
+                        error_code=ErrorCode.AUDIO_RECORD_COMMAND_FAILED,
+                    )
+                except FileNotFoundError:
+                    return error(
+                        "audio_record_failed",
+                        "arecord not installed",
+                        error_code=ErrorCode.DEPENDENCY_AUDIO_ARECORD_MISSING,
+                    )
+                except OSError as exc:
+                    return error(
+                        "audio_record_failed",
+                        "Endpoint recording failed",
+                        details=str(exc),
+                        error_code=ErrorCode.AUDIO_RECORD_COMMAND_FAILED,
+                    )
+            else:
+                log(f"Recording for {timeout}s to {audio_path}")
+                record_result = self._audio.record(duration=timeout, output=audio_path)
             if not record_result.get("ok"):
                 log(f"Recording failed: {record_result}")
                 return record_result
+            endpoint_metrics = record_result.get("endpoint_metrics")
 
             log(f"Recording complete: {record_result}")
 
@@ -155,12 +200,15 @@ class ListenCapability(Capability):
             if not asr_result.get("ok"):
                 return asr_result
 
-            return success(
+            response = success(
                 text=asr_result.get("text", ""),
                 confidence=asr_result.get("confidence"),
                 duration_sec=end_time - start_time,
                 audio_path=audio_path if save_audio else None,
             )
+            if endpoint_metrics is not None:
+                response["endpoint_metrics"] = endpoint_metrics
+            return response
         finally:
             try:
                 Path(trimmed_path).unlink(missing_ok=True)
