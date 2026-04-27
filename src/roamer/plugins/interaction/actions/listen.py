@@ -16,6 +16,14 @@ class ListenAction:
         timeout: float = 10.0,
         save_audio: str | None = None,
         debug: bool = False,
+        use_endpointing: bool = False,
     ) -> dict[str, Any]:
         """Run speech listening and transcription."""
-        return self._capability.listen(timeout=timeout, save_audio=save_audio, debug=debug)
+        kwargs: dict[str, Any] = {
+            "timeout": timeout,
+            "save_audio": save_audio,
+            "debug": debug,
+        }
+        if use_endpointing:
+            kwargs["use_endpointing"] = True
+        return self._capability.listen(**kwargs)

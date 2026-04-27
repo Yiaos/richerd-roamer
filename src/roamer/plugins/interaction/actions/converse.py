@@ -17,10 +17,12 @@ class ConverseAction:
         timeout: float = 8.0,
         no_sound: bool = False,
         max_turns: int = 10,
+        use_endpointing: bool = False,
     ) -> dict[str, Any]:
         return self._capability.run(
             no_wakeword=no_wakeword,
             timeout=timeout,
             no_sound=no_sound,
             max_turns=max_turns,
+            use_endpointing=use_endpointing,
         )

@@ -90,6 +90,11 @@ class RoamerServeRuntime:
             )
         if command == "converse":
             self.ensure_registered()
+            endpoint_cfg = self.config.get("converse", {}).get("endpoint", {})
+            daemon_endpointing = endpoint_cfg.get("mode") == "vad_endpoint"
+            if daemon_endpointing:
+                args = dict(args)
+                args.setdefault("use_endpointing", True)
             result = run_action("converse", **args)
             result["served_by"] = "daemon"
             return result
@@ -127,11 +132,6 @@ def serve_forever(
         server.listen(5)
         while True:
             conn, _ = server.accept()
-            if not busy_lock.acquire(blocking=False):
-                _write_busy_response(conn)
-                conn.close()
-                continue
-
             worker = threading.Thread(
                 target=_handle_connection,
                 args=(conn, runtime, config, busy_lock),
@@ -146,12 +146,25 @@ def _handle_connection(
     config: dict[str, Any],
     busy_lock: threading.Lock,
 ) -> None:
+    lock_acquired = False
     try:
         with conn:
             conn.settimeout(float(config.get("serve", {}).get("request_timeout_sec", 60.0)))
             try:
                 request = read_request(conn)
-                response = runtime.handle(request) if request.get("ok", True) else request
+                if request.get("ok", True):
+                    lock_acquired = busy_lock.acquire(blocking=False)
+                    if lock_acquired:
+                        response = runtime.handle(request)
+                    else:
+                        response = error(
+                            "serve_busy",
+                            "Roamer serve is busy handling another request",
+                            error_code=ErrorCode.SERVE_UNAVAILABLE,
+                            served_by="daemon",
+                        )
+                else:
+                    response = request
             except Exception as exc:
                 response = error(
                     "serve_request_failed",
@@ -164,20 +177,5 @@ def _handle_connection(
             except OSError:
                 pass
     finally:
-        busy_lock.release()
-
-
-def _write_busy_response(conn: socket.socket) -> None:
-    try:
-        with conn:
-            write_response(
-                conn,
-                error(
-                    "serve_busy",
-                    "Roamer serve is busy handling another request",
-                    error_code=ErrorCode.SERVE_UNAVAILABLE,
-                    served_by="daemon",
-                ),
-            )
-    except OSError:
-        pass
+        if lock_acquired:
+            busy_lock.release()

@@ -1,6 +1,7 @@
 """Base class for audio drivers."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from typing import Any
 
 
@@ -27,6 +28,18 @@ class AudioDriver(ABC):
             Result dict with ok, path, duration_sec, sample_rate, channels
         """
         pass
+
+    def stream_chunks(
+        self,
+        *,
+        chunk_duration_sec: float = 0.032,
+        max_duration_sec: float = 10.0,
+    ) -> Iterator[bytes]:
+        """Stream raw PCM audio chunks.
+
+        Drivers that support real-time endpointing should override this.
+        """
+        raise NotImplementedError("audio driver does not support chunk streaming")
 
     @abstractmethod
     def play(self, file: str) -> dict[str, Any]:

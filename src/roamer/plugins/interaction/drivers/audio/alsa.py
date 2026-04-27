@@ -3,7 +3,7 @@
 import subprocess
 import wave
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from roamer.platform.contract import ErrorCode
 from roamer.platform.output import error, success
@@ -13,6 +13,65 @@ from roamer.plugins.interaction.drivers.registry import register_driver
 
 class AlsaDriver(AudioDriver):
     """Audio driver using ALSA tools (arecord/aplay)."""
+
+    def stream_chunks(
+        self,
+        *,
+        chunk_duration_sec: float = 0.032,
+        max_duration_sec: float = 10.0,
+    ) -> Iterator[bytes]:
+        """Stream raw PCM chunks from arecord stdout.
+
+        This is intentionally separate from ``record`` so the existing file
+        recording/audio.record path stays byte-for-byte compatible with the
+        prior arecord-to-file behavior.
+        """
+        device = self.config.get("capture_device", "default")
+        sample_rate = int(self.config.get("sample_rate", 16000))
+        channels = int(self.config.get("channels", 2))
+        sample_width_bytes = 2
+        chunk_size = max(1, int(sample_rate * chunk_duration_sec))
+        read_size = chunk_size * channels * sample_width_bytes
+
+        cmd = [
+            "arecord",
+            "-D",
+            str(device),
+            "-f",
+            "S16_LE",
+            "-r",
+            str(sample_rate),
+            "-c",
+            str(channels),
+            "-t",
+            "raw",
+        ]
+
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        emitted = 0
+        max_chunks = max(1, int(max_duration_sec / chunk_duration_sec) + 1)
+
+        try:
+            if process.stdout is None:
+                raise RuntimeError("arecord stdout unavailable")
+            while emitted < max_chunks:
+                chunk = process.stdout.read(read_size)
+                if not chunk:
+                    break
+                emitted += 1
+                yield chunk
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=1)
 
     def record(self, output: str, duration: float) -> dict[str, Any]:
         """Record audio using arecord.

@@ -1,5 +1,6 @@
 """Tests for audio driver and capability."""
 
+import io
 import subprocess
 from unittest.mock import MagicMock, patch
 
@@ -79,6 +80,49 @@ class TestAlsaDriver:
 
         assert result["ok"] is False
         assert result["error"] == "audio_play_failed"
+
+    def test_stream_chunks_uses_arecord_stdout_and_stops_process(self):
+        """Chunk capture should stream raw PCM from arecord stdout."""
+        driver = AlsaDriver({
+            "capture_device": "hw:1,0",
+            "sample_rate": 1000,
+            "channels": 2,
+        })
+        process = MagicMock()
+        process.stdout = io.BytesIO(b"a" * 40 + b"b" * 40)
+        process.poll.return_value = None
+
+        with patch("subprocess.Popen", return_value=process) as mock_popen:
+            chunks = list(driver.stream_chunks(chunk_duration_sec=0.01, max_duration_sec=0.02))
+
+        assert chunks == [b"a" * 40, b"b" * 40]
+        cmd = mock_popen.call_args[0][0]
+        assert cmd == [
+            "arecord",
+            "-D",
+            "hw:1,0",
+            "-f",
+            "S16_LE",
+            "-r",
+            "1000",
+            "-c",
+            "2",
+            "-t",
+            "raw",
+        ]
+        process.terminate.assert_called_once()
+        process.wait.assert_called_once_with(timeout=1)
+
+    def test_stream_chunks_missing_arecord_raises_dependency_error(self):
+        driver = AlsaDriver({"capture_device": "hw:1,0"})
+
+        with patch("subprocess.Popen", side_effect=FileNotFoundError):
+            try:
+                list(driver.stream_chunks())
+            except FileNotFoundError:
+                pass
+            else:  # pragma: no cover
+                raise AssertionError("expected FileNotFoundError")
 
     def test_record_uses_config(self):
         """Test that driver uses config values."""
