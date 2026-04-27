@@ -1,5 +1,6 @@
 """Tests for startup initialization capability."""
 
+import subprocess
 from unittest.mock import MagicMock, patch
 
 from roamer.plugins.interaction.capabilities.init import InitCapability
@@ -227,3 +228,114 @@ def test_init_fails_when_proxy_init_command_fails(sample_config, tmp_path) -> No
     assert len(result["steps"]) == 1
     assert result["steps"][0]["exit_code"] == 7
     assert result["steps"][0]["error"] == "proxy_init_failed"
+
+
+def test_init_reports_active_serve_when_enabled(sample_config) -> None:
+    sample_config["init"] = {"ensure_serve_on_startup": True}
+
+    with patch("roamer.plugins.interaction.capabilities.init.subprocess.run") as mock_run:
+        mock_run.return_value.returncode = 0
+        mock_run.return_value.stdout = ""
+        mock_run.return_value.stderr = ""
+        capability = InitCapability(sample_config)
+        result = capability.init()
+
+    step = result["steps"][0]
+    assert step["name"] == "serve_init"
+    assert step["ok"] is True
+    assert step["already_active"] is True
+    mock_run.assert_called_once()
+
+
+def test_init_starts_serve_when_inactive(sample_config) -> None:
+    sample_config["init"] = {"ensure_serve_on_startup": True}
+
+    inactive = MagicMock(returncode=3, stdout="", stderr="")
+    started = MagicMock(returncode=0, stdout="started", stderr="")
+    with patch(
+        "roamer.plugins.interaction.capabilities.init.subprocess.run",
+        side_effect=[inactive, started],
+    ):
+        capability = InitCapability(sample_config)
+        result = capability.init()
+
+    step = result["steps"][0]
+    assert step["name"] == "serve_init"
+    assert step["ok"] is True
+    assert step["already_active"] is False
+    assert step["stdout"] == "started"
+
+
+def test_init_skips_when_systemctl_missing(sample_config) -> None:
+    sample_config["init"] = {"ensure_serve_on_startup": True}
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.init.subprocess.run",
+        side_effect=FileNotFoundError("no systemctl"),
+    ):
+        capability = InitCapability(sample_config)
+        result = capability.init()
+
+    step = result["steps"][0]
+    assert result["ok"] is True
+    assert step["name"] == "serve_init"
+    assert step["ok"] is False
+    assert step["skipped"] is True
+    assert step["reason"] == "systemd_unavailable"
+
+
+def test_init_fails_when_systemctl_status_times_out(sample_config) -> None:
+    sample_config["init"] = {"ensure_serve_on_startup": True}
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.init.subprocess.run",
+        side_effect=subprocess.TimeoutExpired(["systemctl"], 1.0),
+    ):
+        capability = InitCapability(sample_config)
+        result = capability.init()
+
+    assert result["ok"] is False
+    assert result["initialized"] is False
+    assert result["error_code"] == "serve.unavailable"
+    step = result["steps"][0]
+    assert step["name"] == "serve_init"
+    assert step["ok"] is False
+    assert step["error"] == "serve_status_timeout"
+
+
+def test_init_fails_when_systemctl_status_oserror(sample_config) -> None:
+    sample_config["init"] = {"ensure_serve_on_startup": True}
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.init.subprocess.run",
+        side_effect=PermissionError("permission denied"),
+    ):
+        capability = InitCapability(sample_config)
+        result = capability.init()
+
+    assert result["ok"] is False
+    assert result["initialized"] is False
+    assert result["error_code"] == "serve.unavailable"
+    step = result["steps"][0]
+    assert step["name"] == "serve_init"
+    assert step["ok"] is False
+    assert step["error"] == "serve_status_failed"
+
+
+def test_init_fails_top_level_when_serve_start_fails(sample_config) -> None:
+    sample_config["init"] = {"ensure_serve_on_startup": True}
+
+    inactive = MagicMock(returncode=3, stdout="", stderr="")
+    failed = MagicMock(returncode=1, stdout="", stderr="boom")
+    with patch(
+        "roamer.plugins.interaction.capabilities.init.subprocess.run",
+        side_effect=[inactive, failed],
+    ):
+        capability = InitCapability(sample_config)
+        result = capability.init()
+
+    assert result["ok"] is False
+    assert result["initialized"] is False
+    assert result["error_code"] == "serve.unavailable"
+    assert result["steps"][0]["name"] == "serve_init"
+    assert result["steps"][0]["error"] == "serve_start_failed"

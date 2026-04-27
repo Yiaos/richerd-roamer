@@ -37,6 +37,12 @@ class InitCapability(Capability):
         self._connect_speaker_on_startup = bool(
             init_config.get("connect_speaker_on_startup", False)
         )
+        self._ensure_serve_on_startup = bool(
+            init_config.get("ensure_serve_on_startup", False)
+        )
+        self._serve_start_timeout_sec = float(
+            init_config.get("serve_start_timeout_sec", 10.0)
+        )
         self._controller_ready_timeout_sec = float(
             init_config.get("bluetooth_controller_ready_timeout_sec", 20.0)
         )
@@ -71,7 +77,91 @@ class InitCapability(Capability):
         if self._connect_speaker_on_startup:
             steps.append(self._connect_speaker_step())
 
+        if self._ensure_serve_on_startup:
+            serve_step = self._ensure_serve_step()
+            steps.append(serve_step)
+            if not serve_step.get("ok") and not serve_step.get("skipped"):
+                return error(
+                    "serve_unavailable",
+                    serve_step.get("message") or "Roamer serve failed to start",
+                    error_code=ErrorCode.SERVE_UNAVAILABLE,
+                    initialized=False,
+                    steps=steps,
+                )
+
         return success(initialized=True, steps=steps)
+
+    def _ensure_serve_step(self) -> dict[str, Any]:
+        try:
+            status = subprocess.run(
+                ["systemctl", "is-active", "--quiet", "roamer-serve.service"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=self._serve_start_timeout_sec,
+            )
+        except FileNotFoundError as exc:
+            return {
+                "name": "serve_init",
+                "ok": False,
+                "skipped": True,
+                "reason": "systemd_unavailable",
+                "message": str(exc),
+            }
+        except subprocess.TimeoutExpired as exc:
+            return {
+                "name": "serve_init",
+                "ok": False,
+                "service": "roamer-serve.service",
+                "error": "serve_status_timeout",
+                "message": str(exc),
+                "stdout": self._decode_process_text(exc.stdout),
+                "stderr": self._decode_process_text(exc.stderr),
+            }
+        except OSError as exc:
+            return {
+                "name": "serve_init",
+                "ok": False,
+                "service": "roamer-serve.service",
+                "error": "serve_status_failed",
+                "message": str(exc),
+            }
+
+        if status.returncode == 0:
+            return {
+                "name": "serve_init",
+                "ok": True,
+                "service": "roamer-serve.service",
+                "already_active": True,
+            }
+
+        try:
+            start = subprocess.run(
+                ["systemctl", "start", "roamer-serve.service"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=self._serve_start_timeout_sec,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {
+                "name": "serve_init",
+                "ok": False,
+                "service": "roamer-serve.service",
+                "error": "serve_start_failed",
+                "message": str(exc),
+            }
+
+        return {
+            "name": "serve_init",
+            "ok": start.returncode == 0,
+            "service": "roamer-serve.service",
+            "already_active": False,
+            "exit_code": start.returncode,
+            "stdout": self._decode_process_text(start.stdout),
+            "stderr": self._decode_process_text(start.stderr),
+            "error": None if start.returncode == 0 else "serve_start_failed",
+        }
 
     def _configure_proxy_step(self) -> dict[str, Any]:
         script = Path(self._proxy_init_script).expanduser()
