@@ -196,6 +196,20 @@ def test_ipc_request_timeout_after_send_is_not_unavailable(tmp_path) -> None:
         socket_path.unlink(missing_ok=True)
 
 
+def _wait_for_serve_socket(socket_path: Path) -> None:
+    last_error: Exception | None = None
+    for _ in range(100):
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                client.settimeout(0.1)
+                client.connect(str(socket_path))
+                return
+        except OSError as exc:
+            last_error = exc
+        time.sleep(0.01)
+    raise AssertionError(f"serve socket did not become ready: {last_error}")
+
+
 def test_serve_forever_rejects_second_request_while_busy(tmp_path) -> None:
     socket_path = Path("/tmp") / f"roamer-{id(tmp_path)}.sock"
     first_started = threading.Event()
@@ -220,10 +234,7 @@ def test_serve_forever_rejects_second_request_while_busy(tmp_path) -> None:
         daemon=True,
     )
     server.start()
-    for _ in range(100):
-        if socket_path.exists():
-            break
-        time.sleep(0.01)
+    _wait_for_serve_socket(socket_path)
 
     first = threading.Thread(
         target=request_via_socket,
@@ -271,10 +282,7 @@ def test_serve_forever_recovers_after_runtime_exception(tmp_path) -> None:
         daemon=True,
     )
     server.start()
-    for _ in range(100):
-        if socket_path.exists():
-            break
-        time.sleep(0.01)
+    _wait_for_serve_socket(socket_path)
 
     first = request_via_socket(str(socket_path), {"command": "ping", "args": {}}, timeout_sec=1.0)
     second = request_via_socket(str(socket_path), {"command": "ping", "args": {}}, timeout_sec=1.0)
