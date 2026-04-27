@@ -58,10 +58,6 @@ serve:
   socket: /run/roamer/roamer.sock
   request_timeout_sec: 60.0
   fallback_to_cli: true
-  prewarm:
-    asr: true
-    vad: true
-    tts: false
 
 valetudo:
   host: 10.0.0.226

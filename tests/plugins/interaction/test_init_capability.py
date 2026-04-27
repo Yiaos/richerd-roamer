@@ -1,5 +1,6 @@
 """Tests for startup initialization capability."""
 
+import subprocess
 from unittest.mock import MagicMock, patch
 
 from roamer.plugins.interaction.capabilities.init import InitCapability
@@ -265,21 +266,60 @@ def test_init_starts_serve_when_inactive(sample_config) -> None:
     assert step["stdout"] == "started"
 
 
-def test_init_structures_systemd_unavailable(sample_config) -> None:
+def test_init_skips_when_systemctl_missing(sample_config) -> None:
     sample_config["init"] = {"ensure_serve_on_startup": True}
 
     with patch(
         "roamer.plugins.interaction.capabilities.init.subprocess.run",
-        side_effect=OSError("no systemctl"),
+        side_effect=FileNotFoundError("no systemctl"),
     ):
         capability = InitCapability(sample_config)
         result = capability.init()
 
     step = result["steps"][0]
+    assert result["ok"] is True
     assert step["name"] == "serve_init"
     assert step["ok"] is False
     assert step["skipped"] is True
     assert step["reason"] == "systemd_unavailable"
+
+
+def test_init_fails_when_systemctl_status_times_out(sample_config) -> None:
+    sample_config["init"] = {"ensure_serve_on_startup": True}
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.init.subprocess.run",
+        side_effect=subprocess.TimeoutExpired(["systemctl"], 1.0),
+    ):
+        capability = InitCapability(sample_config)
+        result = capability.init()
+
+    assert result["ok"] is False
+    assert result["initialized"] is False
+    assert result["error_code"] == "serve.unavailable"
+    step = result["steps"][0]
+    assert step["name"] == "serve_init"
+    assert step["ok"] is False
+    assert step["error"] == "serve_status_timeout"
+
+
+def test_init_fails_when_systemctl_status_oserror(sample_config) -> None:
+    sample_config["init"] = {"ensure_serve_on_startup": True}
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.init.subprocess.run",
+        side_effect=PermissionError("permission denied"),
+    ):
+        capability = InitCapability(sample_config)
+        result = capability.init()
+
+    assert result["ok"] is False
+    assert result["initialized"] is False
+    assert result["error_code"] == "serve.unavailable"
+    step = result["steps"][0]
+    assert step["name"] == "serve_init"
+    assert step["ok"] is False
+    assert step["error"] == "serve_status_failed"
 
 
 def test_init_fails_top_level_when_serve_start_fails(sample_config) -> None:

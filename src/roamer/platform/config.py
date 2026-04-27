@@ -77,11 +77,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "socket": "/run/roamer/roamer.sock",
         "request_timeout_sec": 60.0,
         "fallback_to_cli": True,
-        "prewarm": {
-            "asr": True,
-            "vad": True,
-            "tts": False,
-        },
     },
     "converse": {
         "enabled": True,

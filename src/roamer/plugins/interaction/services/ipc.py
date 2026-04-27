@@ -15,6 +15,18 @@ class IpcClientError(RuntimeError):
     """Raised when the serve IPC client cannot complete a request."""
 
 
+class IpcUnavailableError(IpcClientError):
+    """Raised before a request reaches the serve daemon."""
+
+
+class IpcRequestTimeoutError(IpcClientError):
+    """Raised after a request was sent but no response arrived in time."""
+
+
+class IpcProtocolError(IpcClientError):
+    """Raised after the daemon connection produced an invalid response."""
+
+
 def request_via_socket(
     socket_path: str,
     payload: dict[str, Any],
@@ -23,25 +35,42 @@ def request_via_socket(
 ) -> dict[str, Any]:
     """Send one newline-delimited JSON request to a Unix socket."""
     path = Path(socket_path).expanduser()
+    request_started = False
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
             client.settimeout(timeout_sec)
-            client.connect(str(path))
-            client.sendall(json.dumps(payload, ensure_ascii=False).encode("utf-8") + b"\n")
-            raw = _readline(client)
-    except OSError as exc:
-        raise IpcClientError(str(exc)) from exc
+            try:
+                client.connect(str(path))
+            except OSError as exc:
+                raise IpcUnavailableError(str(exc)) from exc
+
+            try:
+                request_started = True
+                client.sendall(json.dumps(payload, ensure_ascii=False).encode("utf-8") + b"\n")
+                raw = _readline(client)
+            except socket.timeout as exc:
+                if request_started:
+                    raise IpcRequestTimeoutError(
+                        f"Timed out waiting for roamer serve response after {timeout_sec}s"
+                    ) from exc
+                raise IpcUnavailableError(str(exc)) from exc
+            except OSError as exc:
+                if request_started:
+                    raise IpcProtocolError(str(exc)) from exc
+                raise IpcUnavailableError(str(exc)) from exc
+    except IpcClientError:
+        raise
 
     if not raw:
-        raise IpcClientError("Empty response from roamer serve")
+        raise IpcProtocolError("Empty response from roamer serve")
 
     try:
         decoded = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise IpcClientError(f"Invalid response from roamer serve: {exc}") from exc
+        raise IpcProtocolError(f"Invalid response from roamer serve: {exc}") from exc
 
     if not isinstance(decoded, dict):
-        raise IpcClientError("Invalid response from roamer serve: expected object")
+        raise IpcProtocolError("Invalid response from roamer serve: expected object")
     return decoded
 
 
@@ -87,7 +116,10 @@ def _readline(sock: socket.socket, max_bytes: int = 65536) -> bytes:
     chunks: list[bytes] = []
     total = 0
     while True:
-        chunk = sock.recv(1)
+        try:
+            chunk = sock.recv(1)
+        except socket.timeout as exc:
+            raise IpcRequestTimeoutError("Timed out reading roamer serve response") from exc
         if not chunk:
             break
         if chunk == b"\n":
@@ -95,5 +127,5 @@ def _readline(sock: socket.socket, max_bytes: int = 65536) -> bytes:
         chunks.append(chunk)
         total += len(chunk)
         if total > max_bytes:
-            raise IpcClientError("Serve request exceeded maximum size")
+            raise IpcProtocolError("Serve request exceeded maximum size")
     return b"".join(chunks)

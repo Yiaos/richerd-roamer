@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/home/richerd/worksp/richerd-roamer
-ExecStart=/home/richerd/.venv/roamer/bin/roamer serve --prewarm
+ExecStart=/home/richerd/.venv/roamer/bin/roamer serve --prepare
 Restart=on-failure
 RestartSec=2
 RuntimeDirectory=roamer

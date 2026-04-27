@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import socket
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -47,19 +48,23 @@ class RoamerServeRuntime:
         registry.register("listen", self._listen_action.run)
         self._registered = True
 
-    def prewarm(self) -> dict[str, Any]:
-        """Initialize reusable daemon state.
+    def prepare(self) -> dict[str, Any]:
+        """Prepare reusable daemon state without loading heavy speech models.
 
-        Current P1 keeps heavy driver loading lazy because ListenCapability already caches
-        drivers inside the long-running process once constructed by a request. The hook is
-        explicit so ASR/VAD prewarming can become real without changing the IPC contract.
+        P1 keeps ASR/VAD/TTS model loading lazy. The daemon registers actions and
+        caches the listen action object so later requests reuse in-process state,
+        but this does not claim FunASR/Silero/TTS models are preloaded.
         """
         self.ensure_registered()
         return success(
-            prewarmed=True,
+            prepared=True,
             registered=self._registered,
-            listen_cached=self._listen_action is not None,
+            listen_action_cached=self._listen_action is not None,
         )
+
+    def prewarm(self) -> dict[str, Any]:
+        """Backward-compatible alias for older --prewarm callers."""
+        return self.prepare()
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         """Handle one decoded serve request."""
@@ -80,7 +85,7 @@ class RoamerServeRuntime:
                 alive=True,
                 ready=True,
                 registered=self._registered,
-                listen_cached=self._listen_action is not None,
+                listen_action_cached=self._listen_action is not None,
                 served_by="daemon",
             )
         if command == "converse":
@@ -105,10 +110,12 @@ def serve_forever(
 ) -> None:
     """Run the blocking Unix-socket serve loop."""
     runtime = runtime or RoamerServeRuntime(config)
-    runtime.prewarm()
+    runtime.prepare()
     path = Path(socket_path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.unlink(missing_ok=True)
+
+    busy_lock = threading.Lock()
 
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
         old_umask = os.umask(0o077)
@@ -120,19 +127,57 @@ def serve_forever(
         server.listen(5)
         while True:
             conn, _ = server.accept()
-            with conn:
-                conn.settimeout(float(config.get("serve", {}).get("request_timeout_sec", 60.0)))
-                try:
-                    request = read_request(conn)
-                    response = runtime.handle(request) if request.get("ok", True) else request
-                except Exception as exc:
-                    response = error(
-                        "serve_request_failed",
-                        f"Serve request failed: {exc}",
-                        error_code=ErrorCode.SERVE_REQUEST_FAILED,
-                        served_by="daemon",
-                    )
-                try:
-                    write_response(conn, response)
-                except OSError:
-                    continue
+            if not busy_lock.acquire(blocking=False):
+                _write_busy_response(conn)
+                conn.close()
+                continue
+
+            worker = threading.Thread(
+                target=_handle_connection,
+                args=(conn, runtime, config, busy_lock),
+                daemon=True,
+            )
+            worker.start()
+
+
+def _handle_connection(
+    conn: socket.socket,
+    runtime: RoamerServeRuntime,
+    config: dict[str, Any],
+    busy_lock: threading.Lock,
+) -> None:
+    try:
+        with conn:
+            conn.settimeout(float(config.get("serve", {}).get("request_timeout_sec", 60.0)))
+            try:
+                request = read_request(conn)
+                response = runtime.handle(request) if request.get("ok", True) else request
+            except Exception as exc:
+                response = error(
+                    "serve_request_failed",
+                    f"Serve request failed: {exc}",
+                    error_code=ErrorCode.SERVE_REQUEST_FAILED,
+                    served_by="daemon",
+                )
+            try:
+                write_response(conn, response)
+            except OSError:
+                pass
+    finally:
+        busy_lock.release()
+
+
+def _write_busy_response(conn: socket.socket) -> None:
+    try:
+        with conn:
+            write_response(
+                conn,
+                error(
+                    "serve_busy",
+                    "Roamer serve is busy handling another request",
+                    error_code=ErrorCode.SERVE_UNAVAILABLE,
+                    served_by="daemon",
+                ),
+            )
+    except OSError:
+        pass

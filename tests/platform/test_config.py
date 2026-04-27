@@ -94,6 +94,6 @@ def test_default_config_includes_serve_and_endpoint_defaults(tmp_path, monkeypat
 
     assert config["serve"]["enabled"] is True
     assert config["serve"]["fallback_to_cli"] is True
-    assert config["serve"]["prewarm"]["asr"] is True
+    assert "prewarm" not in config["serve"]
     assert config["converse"]["endpoint"]["mode"] == "fixed_recording"
     assert config["converse"]["endpoint"]["silence_sec"] == 2.0

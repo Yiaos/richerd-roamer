@@ -100,12 +100,30 @@ class InitCapability(Capability):
                 text=True,
                 timeout=self._serve_start_timeout_sec,
             )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except FileNotFoundError as exc:
             return {
                 "name": "serve_init",
                 "ok": False,
                 "skipped": True,
                 "reason": "systemd_unavailable",
+                "message": str(exc),
+            }
+        except subprocess.TimeoutExpired as exc:
+            return {
+                "name": "serve_init",
+                "ok": False,
+                "service": "roamer-serve.service",
+                "error": "serve_status_timeout",
+                "message": str(exc),
+                "stdout": self._decode_process_text(exc.stdout),
+                "stderr": self._decode_process_text(exc.stderr),
+            }
+        except OSError as exc:
+            return {
+                "name": "serve_init",
+                "ok": False,
+                "service": "roamer-serve.service",
+                "error": "serve_status_failed",
                 "message": str(exc),
             }
 
