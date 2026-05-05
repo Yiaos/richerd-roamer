@@ -85,7 +85,6 @@ class ListenCapability(Capability):
                 print(f"[listen] {msg}", file=sys.stderr)
 
         audio_path = save_audio if save_audio else self._create_temp_audio("roamer_rec_")
-        trimmed_path = self._create_temp_audio("roamer_speech_")
         cleanup_audio = save_audio is None
         endpoint_metrics: dict[str, Any] | None = None
 
@@ -136,7 +135,36 @@ class ListenCapability(Capability):
             endpoint_metrics = record_result.get("endpoint_metrics")
 
             log(f"Recording complete: {record_result}")
+            return self.transcribe_audio_file(
+                audio_path,
+                save_audio=save_audio,
+                debug=debug,
+                endpoint_metrics=endpoint_metrics,
+            )
+        finally:
+            if cleanup_audio:
+                try:
+                    Path(audio_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
 
+    def transcribe_audio_file(
+        self,
+        audio_path: str,
+        *,
+        save_audio: str | None = None,
+        debug: bool = False,
+        endpoint_metrics: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Run VAD trimming and ASR on an existing WAV file."""
+        import sys
+
+        def log(msg: str) -> None:
+            if debug:
+                print(f"[listen] {msg}", file=sys.stderr)
+
+        trimmed_path = self._create_temp_audio("roamer_speech_")
+        try:
             # Load audio for VAD
             try:
                 audio, sample_rate = self._load_wav(audio_path)
@@ -214,11 +242,6 @@ class ListenCapability(Capability):
                 Path(trimmed_path).unlink(missing_ok=True)
             except Exception:
                 pass
-            if cleanup_audio:
-                try:
-                    Path(audio_path).unlink(missing_ok=True)
-                except Exception:
-                    pass
 
     def _load_wav(self, path: str) -> tuple[np.ndarray, int]:
         """Load WAV file as numpy array.
