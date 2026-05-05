@@ -1,5 +1,7 @@
 """Tests for pre-roll audio chunk buffering."""
 
+import time
+
 from roamer.plugins.interaction.services.preroll_audio import PreRollAudioSource
 
 
@@ -39,6 +41,21 @@ def test_clear_removes_buffered_and_live_chunks() -> None:
     assert source.snapshot() == []
 
 
+def test_live_queue_is_bounded_while_idle() -> None:
+    source = PreRollAudioSource(
+        chunk_source=iter([b"a", b"b", b"c", b"d", b"e"]),
+        chunk_duration_sec=0.5,
+        pre_roll_sec=1.0,
+    )
+
+    source.start()
+    deadline = time.monotonic() + 1.0
+    while source.running and time.monotonic() < deadline:
+        time.sleep(0.001)
+
+    assert source._live_chunks.qsize() <= 2
+
+
 def test_exhausted_source_reports_not_running_after_reader_stops() -> None:
     source = PreRollAudioSource(
         chunk_source=iter([b"a"]),
@@ -46,6 +63,51 @@ def test_exhausted_source_reports_not_running_after_reader_stops() -> None:
         pre_roll_sec=1.0,
     )
     source.start()
+    source.stop()
+
+    assert source.running is False
+
+
+def test_stop_closes_underlying_chunk_generator() -> None:
+    closed = False
+
+    def chunks():
+        nonlocal closed
+        try:
+            yield b"a"
+            yield b"b"
+        finally:
+            closed = True
+
+    source = PreRollAudioSource(
+        chunk_source=chunks(),
+        chunk_duration_sec=0.5,
+        pre_roll_sec=1.0,
+    )
+    source.drain_available_for_test(limit=1)
+
+    source.stop()
+
+    assert closed is True
+
+
+def test_stop_ignores_generator_already_executing_close_error() -> None:
+    class BusyIterator:
+        def __iter__(self):
+            return self
+
+        def __next__(self) -> bytes:
+            raise StopIteration
+
+        def close(self) -> None:
+            raise ValueError("generator already executing")
+
+    source = PreRollAudioSource(
+        chunk_source=BusyIterator(),
+        chunk_duration_sec=0.5,
+        pre_roll_sec=1.0,
+    )
+
     source.stop()
 
     assert source.running is False

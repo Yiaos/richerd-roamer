@@ -35,27 +35,47 @@ def test_wake_once_routes_stripped_command() -> None:
     assert cap._route_text.call_args.kwargs["text"] == "现在几点了"
 
 
-def test_wake_once_ignores_non_wake_text() -> None:
-    cap = WakeCapability(_config())
+def test_wake_once_waits_for_valid_wake_phrase_after_non_match() -> None:
+    config = _config()
+    config["converse"]["wakeword"]["min_interval_sec"] = 0
+    cap = WakeCapability(config)
     cap._wait_for_trigger = Mock(return_value=True)
-    cap._listen_once = Mock(return_value={"ok": True, "text": "现在几点了"})
+    cap._listen_once = Mock(
+        side_effect=[
+            {"ok": True, "text": "现在几点了"},
+            {"ok": True, "text": "Richard 现在几点了"},
+        ]
+    )
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "local"})
 
     result = cap.run(once=True, timeout=1.0, no_sound=True)
 
     assert result["ok"] is True
-    assert result["ignored"] is True
-    assert result["reason"] == "wake_phrase_not_matched"
+    assert "ignored" not in result
+    assert cap._listen_once.call_count == 2
+    cap._route_text.assert_called_once()
+    assert cap._route_text.call_args.kwargs["text"] == "现在几点了"
 
 
 def test_wake_service_mode_keeps_polling_after_empty_timeout() -> None:
     cap = WakeCapability(_config())
     cap._wait_for_trigger = Mock(side_effect=[False, True])
     cap._listen_once = Mock(return_value={"ok": True, "text": "Richard 现在几点了"})
-    cap._route_text = Mock(return_value={"turn_id": 1, "route": "local"})
+    cap._route_text = Mock(
+        return_value={
+            "ok": False,
+            "intent_result": {
+                "ok": False,
+                "error": "converse_intent_invalid_action",
+                "message": "invalid action",
+                "error_code": "converse.intent.invalid_action",
+            },
+        }
+    )
 
-    result = cap.run(once=True, timeout=None, no_sound=True)
+    result = cap.run(once=False, timeout=None, no_sound=True)
 
-    assert result["ok"] is True
+    assert result["ok"] is False
     assert cap._wait_for_trigger.call_count == 2
 
 
@@ -81,6 +101,16 @@ def test_wake_trigger_failure_returns_canonical_error() -> None:
     assert result["error_code"] == ErrorCode.CONVERSE_WAKEWORD_UNAVAILABLE
 
 
+def test_wake_preroll_start_failure_returns_structured_audio_error() -> None:
+    cap = WakeCapability(_config())
+    cap._start_preroll_source_if_needed = Mock(side_effect=FileNotFoundError("arecord"))
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is False
+    assert result["error_code"] == ErrorCode.DEPENDENCY_AUDIO_ARECORD_MISSING
+
+
 def test_wake_clears_preroll_after_routing_before_followup() -> None:
     pre_roll = Mock()
     cap = WakeCapability(_config())
@@ -95,18 +125,76 @@ def test_wake_clears_preroll_after_routing_before_followup() -> None:
     pre_roll.clear.assert_called_once()
 
 
-def test_wake_followup_routes_without_wake_phrase() -> None:
-    cap = WakeCapability(_config())
+def test_wake_once_waits_for_followup_command_after_wake_phrase_only() -> None:
+    config = _config()
+    config["converse"]["wakeword"]["min_interval_sec"] = 0
+    cap = WakeCapability(config)
     cap._wait_for_trigger = Mock(return_value=True)
-    cap._listen_once = Mock(return_value={"ok": True, "text": "Richard"})
+    cap._listen_once = Mock(
+        side_effect=[
+            {"ok": True, "text": "Richard"},
+            {"ok": True, "text": "现在几点了"},
+        ]
+    )
     cap._route_text = Mock(return_value={"turn_id": 2, "route": "local"})
 
-    first = cap.run(once=True, timeout=1.0, no_sound=True)
-    assert first["followup"] is True
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
 
-    cap._listen_once = Mock(return_value={"ok": True, "text": "现在几点了"})
-    second = cap.run(once=True, timeout=1.0, no_sound=True)
-
-    assert second["ok"] is True
+    assert result["ok"] is True
+    assert "followup" not in result
+    assert cap._listen_once.call_count == 2
     cap._route_text.assert_called_once()
     assert cap._route_text.call_args.kwargs["text"] == "现在几点了"
+
+
+def test_wake_once_propagates_route_text_failure() -> None:
+    cap = WakeCapability(_config())
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._listen_once = Mock(return_value={"ok": True, "text": "Richard 现在几点了"})
+    cap._route_text = Mock(
+        return_value={
+            "ok": False,
+            "intent_result": {
+                "ok": False,
+                "error": "converse_intent_invalid_action",
+                "message": "invalid action",
+                "error_code": "converse.intent.invalid_action",
+            },
+        }
+    )
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is False
+    assert result["error_code"] == "converse.intent.invalid_action"
+
+
+def test_wake_service_mode_does_not_accumulate_turns_forever() -> None:
+    config = _config()
+    config["converse"]["wakeword"]["min_interval_sec"] = 0
+    cap = WakeCapability(config)
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._listen_once = Mock(
+        side_effect=[
+            {"ok": True, "text": "noise"},
+            {"ok": True, "text": "noise again"},
+            {"ok": True, "text": "Richard 现在几点了"},
+        ]
+    )
+    cap._route_text = Mock(
+        return_value={
+            "ok": False,
+            "intent_result": {
+                "ok": False,
+                "error": "converse_intent_invalid_action",
+                "message": "invalid action",
+                "error_code": "converse.intent.invalid_action",
+            },
+        }
+    )
+
+    result = cap.run(once=False, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is False
+    assert "turns" not in result
+    assert cap._listen_once.call_count == 3
