@@ -34,6 +34,7 @@ class RoamerServeRuntime:
             "speak",
             "remind",
             "converse",
+            "wake",
             "audio.record",
             "audio.play",
             "bt.status",

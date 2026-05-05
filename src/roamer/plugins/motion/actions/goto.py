@@ -34,7 +34,11 @@ class MotionGotoAction:
                 accepted=True,
                 waiting=False,
                 action="goto",
-                target={"x": int(x), "y": int(y), "angle": int(angle) if angle is not None else None},
+                target={
+                    "x": int(x),
+                    "y": int(y),
+                    "angle": int(angle) if angle is not None else None,
+                },
                 response=command_result.get("response"),
             )
 
@@ -68,7 +72,11 @@ class MotionGotoAction:
                         return success(
                             accepted=True,
                             waiting=True,
-                            target={"x": int(x), "y": int(y), "angle": int(angle) if angle is not None else None},
+                    target={
+                        "x": int(x),
+                        "y": int(y),
+                        "angle": int(angle) if angle is not None else None,
+                    },
                             position=position,
                             status=last_status,
                             distance=round(last_distance, 2),

@@ -2,7 +2,6 @@
 
 from roamer.plugins.interaction.services.wake_phrases import match_wake_phrase
 
-
 PHRASES = ["richard", "rich erd", "瑞彻德"]
 
 

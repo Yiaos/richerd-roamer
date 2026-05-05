@@ -6,7 +6,6 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-
 _LEADING_JUNK_RE = re.compile(r"^[\s,，。.!！?？:：;；、\"'“”‘’\-_]+")
 _SEPARATOR_RE = re.compile(r"[\s\-_]+")
 
