@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Any
 
 from roamer.plugins.interaction.drivers.registry import register_driver
@@ -54,7 +55,7 @@ class Su03tGpioDriver(WakewordDriver):
 def _create_gpiod_request(config: dict[str, Any]) -> Any:
     try:
         import gpiod
-        from gpiod.line import Bias, Direction, Edge, Value
+        from gpiod.line import Bias, Direction, Edge
     except ImportError as exc:
         raise RuntimeError("Python gpiod package is required for su03t_gpio") from exc
 
@@ -65,19 +66,18 @@ def _create_gpiod_request(config: dict[str, Any]) -> Any:
 
     edge = Edge.RISING if edge_name == "rising" else Edge.FALLING
     bias = Bias.PULL_DOWN if pull_name == "down" else Bias.PULL_UP
-    debounce_us = int(float(config.get("debounce_ms", 300)) * 1000)
+    debounce_period = timedelta(milliseconds=float(config.get("debounce_ms", 300)))
 
     settings = gpiod.LineSettings(
         direction=Direction.INPUT,
         edge_detection=edge,
         bias=bias,
-        debounce_period=debounce_us,
+        debounce_period=debounce_period,
     )
     return gpiod.request_lines(
         chip_path,
         consumer="roamer-su03t-wake",
         config={line: settings},
-        default_vals={line: Value.INACTIVE},
     )
 
 
