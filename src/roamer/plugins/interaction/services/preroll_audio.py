@@ -26,6 +26,7 @@ class PreRollAudioSource:
         self._live_chunks: queue.Queue[bytes] = queue.Queue()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._running = False
 
     def start(self) -> None:
         """Start background capture resources.
@@ -35,6 +36,8 @@ class PreRollAudioSource:
         """
         if self._thread is not None:
             return
+        self._stop.clear()
+        self._running = True
         self._thread = threading.Thread(target=self._read_loop, daemon=True)
         self._thread.start()
 
@@ -44,6 +47,12 @@ class PreRollAudioSource:
         if self._thread is not None:
             self._thread.join(timeout=1)
         self._thread = None
+        self._running = False
+
+    @property
+    def running(self) -> bool:
+        """Whether the background reader is expected to be alive."""
+        return bool(self._running and self._thread is not None and self._thread.is_alive())
 
     def snapshot(self) -> list[bytes]:
         """Return buffered pre-roll chunks in playback order."""
@@ -87,11 +96,14 @@ class PreRollAudioSource:
             yield chunk
 
     def _read_loop(self) -> None:
-        for chunk in self._chunk_iter:
-            if self._stop.is_set():
-                return
-            self._buffer.append(chunk)
-            self._live_chunks.put(chunk)
+        try:
+            for chunk in self._chunk_iter:
+                if self._stop.is_set():
+                    return
+                self._buffer.append(chunk)
+                self._live_chunks.put(chunk)
+        finally:
+            self._running = False
 
     def _next_live_chunk(self) -> bytes:
         if self._thread is None:
@@ -108,3 +120,8 @@ class PreRollAudioSource:
                 self._live_chunks.get_nowait()
             except queue.Empty:
                 return
+
+    def clear(self) -> None:
+        """Discard pre-roll and queued live chunks."""
+        self._buffer.clear()
+        self.clear_live_queue()

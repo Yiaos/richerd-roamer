@@ -113,6 +113,23 @@ class TestAlsaDriver:
         process.terminate.assert_called_once()
         process.wait.assert_called_once_with(timeout=1)
 
+    def test_stream_chunks_accepts_unbounded_duration(self):
+        """Long-running wake service can stream until arecord closes stdout."""
+        driver = AlsaDriver({
+            "capture_device": "hw:1,0",
+            "sample_rate": 1000,
+            "channels": 2,
+        })
+        process = MagicMock()
+        process.stdout = io.BytesIO(b"a" * 40 + b"b" * 40)
+        process.poll.return_value = None
+
+        with patch("subprocess.Popen", return_value=process):
+            chunks = list(driver.stream_chunks(chunk_duration_sec=0.01, max_duration_sec=None))
+
+        assert chunks == [b"a" * 40, b"b" * 40]
+        process.terminate.assert_called_once()
+
     def test_stream_chunks_missing_arecord_raises_dependency_error(self):
         driver = AlsaDriver({"capture_device": "hw:1,0"})
 

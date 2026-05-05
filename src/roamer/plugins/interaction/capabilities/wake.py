@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from roamer.platform.output import success
+from roamer.platform.contract import ErrorCode
+from roamer.platform.output import error, success
 from roamer.platform.runtime import run_action
 from roamer.plugins.interaction.capabilities.base import Capability
 from roamer.plugins.interaction.capabilities.converse import ConverseCapability
@@ -25,10 +27,12 @@ from roamer.plugins.interaction.services.wake_phrases import match_wake_phrase
 class WakeCapability(Capability):
     """Hands-free wake loop driven by SU-03T GPIO and ASR confirmation."""
 
-    def __init__(self, config: dict[str, Any]):
+    def __init__(self, config: dict[str, Any], *, clock: Callable[[], float] | None = None):
         super().__init__(config)
         self._followup_until = 0.0
+        self._last_trigger_at: float | None = None
         self._turn_id = 0
+        self._clock = clock or time.monotonic
 
     def run(
         self,
@@ -39,7 +43,7 @@ class WakeCapability(Capability):
     ) -> dict[str, Any]:
         session_id = uuid.uuid4().hex[:12]
         turns: list[dict[str, Any]] = []
-        deadline = time.monotonic() + float(timeout) if timeout is not None else None
+        deadline = self._clock() + float(timeout) if timeout is not None else None
         pre_roll_source = self._start_preroll_source_if_needed()
 
         try:
@@ -49,7 +53,17 @@ class WakeCapability(Capability):
                     return success(completed=True, timeout=True, turns=turns)
 
                 if not self._in_followup():
-                    if not self._wait_for_trigger(wait_timeout):
+                    try:
+                        triggered = self._wait_for_trigger(wait_timeout)
+                    except Exception as exc:
+                        return error(
+                            "converse_wakeword_unavailable",
+                            f"Wake trigger unavailable: {exc}",
+                            error_code=ErrorCode.CONVERSE_WAKEWORD_UNAVAILABLE,
+                        )
+                    if triggered and not self._accept_trigger():
+                        continue
+                    if not triggered:
                         if deadline is not None:
                             return success(completed=True, reason="wake_timeout", turns=turns)
                         continue
@@ -97,6 +111,8 @@ class WakeCapability(Capability):
                     no_sound=no_sound,
                 )
                 turns.append(turn)
+                if pre_roll_source is not None:
+                    pre_roll_source.clear()
                 self._enter_followup()
                 if once:
                     return success(completed=True, turns=turns, wake_match=match.matched)
@@ -107,15 +123,24 @@ class WakeCapability(Capability):
     def _remaining_timeout(self, deadline: float | None) -> float | None:
         if deadline is None:
             return None
-        return max(0.0, deadline - time.monotonic())
+        return max(0.0, deadline - self._clock())
 
     def _in_followup(self) -> bool:
-        return time.monotonic() < self._followup_until
+        return self._clock() < self._followup_until
 
     def _enter_followup(self) -> None:
         wake_cfg = self.config.get("converse", {}).get("wakeword", {})
         timeout = float(wake_cfg.get("followup_timeout_sec", 10.0))
-        self._followup_until = time.monotonic() + timeout
+        self._followup_until = self._clock() + timeout
+
+    def _accept_trigger(self) -> bool:
+        wake_cfg = self.config.get("converse", {}).get("wakeword", {})
+        min_interval = float(wake_cfg.get("min_interval_sec", 1.5))
+        now = self._clock()
+        if self._last_trigger_at is not None and now - self._last_trigger_at < min_interval:
+            return False
+        self._last_trigger_at = now
+        return True
 
     def _wait_for_trigger(self, timeout: float | None) -> bool:
         wake_cfg = self.config.get("converse", {}).get("wakeword", {})
@@ -194,7 +219,7 @@ class WakeCapability(Capability):
         source = PreRollAudioSource(
             chunk_source=listener._audio.stream_chunks(
                 chunk_duration_sec=endpoint_config.chunk_duration_sec,
-                max_duration_sec=3600.0,
+                max_duration_sec=None,
             ),
             chunk_duration_sec=endpoint_config.chunk_duration_sec,
             pre_roll_sec=pre_roll_sec,

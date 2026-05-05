@@ -18,7 +18,7 @@ class AlsaDriver(AudioDriver):
         self,
         *,
         chunk_duration_sec: float = 0.032,
-        max_duration_sec: float = 10.0,
+        max_duration_sec: float | None = 10.0,
     ) -> Iterator[bytes]:
         """Stream raw PCM chunks from arecord stdout.
 
@@ -53,12 +53,16 @@ class AlsaDriver(AudioDriver):
             stderr=subprocess.PIPE,
         )
         emitted = 0
-        max_chunks = max(1, int(max_duration_sec / chunk_duration_sec) + 1)
+        max_chunks = (
+            None
+            if max_duration_sec is None
+            else max(1, int(max_duration_sec / chunk_duration_sec) + 1)
+        )
 
         try:
             if process.stdout is None:
                 raise RuntimeError("arecord stdout unavailable")
-            while emitted < max_chunks:
+            while max_chunks is None or emitted < max_chunks:
                 chunk = process.stdout.read(read_size)
                 if not chunk:
                     break

@@ -2,6 +2,7 @@
 
 from unittest.mock import Mock
 
+from roamer.platform.contract import ErrorCode
 from roamer.plugins.interaction.capabilities.wake import WakeCapability
 
 
@@ -56,6 +57,42 @@ def test_wake_service_mode_keeps_polling_after_empty_timeout() -> None:
 
     assert result["ok"] is True
     assert cap._wait_for_trigger.call_count == 2
+
+
+def test_wake_throttles_repeated_triggers_at_capability_level() -> None:
+    now = [100.0]
+    cap = WakeCapability(_config(), clock=lambda: now[0])
+
+    assert cap._accept_trigger() is True
+    now[0] = 100.5
+    assert cap._accept_trigger() is False
+    now[0] = 102.0
+    assert cap._accept_trigger() is True
+
+
+def test_wake_trigger_failure_returns_canonical_error() -> None:
+    cap = WakeCapability(_config())
+    cap._start_preroll_source_if_needed = Mock(return_value=None)
+    cap._wait_for_trigger = Mock(side_effect=RuntimeError("gpio unavailable"))
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is False
+    assert result["error_code"] == ErrorCode.CONVERSE_WAKEWORD_UNAVAILABLE
+
+
+def test_wake_clears_preroll_after_routing_before_followup() -> None:
+    pre_roll = Mock()
+    cap = WakeCapability(_config())
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._start_preroll_source_if_needed = Mock(return_value=pre_roll)
+    cap._listen_once = Mock(return_value={"ok": True, "text": "Richard 现在几点了"})
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "local"})
+
+    result = cap.run(once=True, timeout=1.0, no_sound=False)
+
+    assert result["ok"] is True
+    pre_roll.clear.assert_called_once()
 
 
 def test_wake_followup_routes_without_wake_phrase() -> None:
