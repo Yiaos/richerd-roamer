@@ -15,6 +15,7 @@ from roamer.plugins.interaction.actions.converse import ConverseAction
 from roamer.plugins.interaction.actions.listen import ListenAction
 from roamer.plugins.interaction.actions.remind import RemindAction
 from roamer.plugins.interaction.actions.speak import SpeakAction
+from roamer.plugins.interaction.actions.wake import WakeAction
 from roamer.plugins.interaction.capabilities.init import InitCapability
 
 
@@ -51,6 +52,7 @@ def register(registry: PluginRegistry, config: dict[str, Any]) -> None:
     registry.register("remind", _lazy_runner(RemindAction, config))
     registry.register("speak", _lazy_runner(SpeakAction, config))
     registry.register("converse", _lazy_runner(ConverseAction, config))
+    registry.register("wake", _lazy_runner(WakeAction, config))
     registry.register("audio.record", _lazy_runner(AudioRecordAction, config))
     registry.register("audio.play", _lazy_runner(AudioPlayAction, config))
     registry.register("bt.status", _lazy_runner(BtStatusAction, config))
