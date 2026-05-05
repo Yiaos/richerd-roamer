@@ -69,15 +69,9 @@ def send_fallback(
 
     instruction = str(
         discord_cfg.get("reply_instruction")
-        or "请回复给用户。"
+        or "通过 Roamer 语音回复"
     )
-    content = (
-        _mention_prefix(discord_cfg)
-        + "[roamer-fallback] "
-        + instruction
-        + "\n"
-        + json.dumps(payload, ensure_ascii=False)
-    )
+    content = _mention_prefix(discord_cfg) + str(text).strip() + "\n" + instruction
     body = {"content": content}
 
     req = request.Request(

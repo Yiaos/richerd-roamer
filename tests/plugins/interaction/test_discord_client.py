@@ -46,8 +46,9 @@ def test_send_fallback_success() -> None:
     assert result["payload"]["session_id"] == "s1"
     assert result["payload"]["turn_id"] == 1
     assert result["payload"]["text"] == "hello"
-    assert result["content"].startswith("[roamer-fallback] ")
-    assert "请回复给用户。" in result["content"]
+    assert result["content"] == "hello\n通过 Roamer 语音回复"
+    assert "[roamer-fallback]" not in result["content"]
+    assert "session_id" not in result["content"]
     assert "timestamp" in result["payload"]
 
 
@@ -62,7 +63,7 @@ def test_send_fallback_uses_configured_reply_instruction() -> None:
             )
 
     assert result["ok"] is True
-    assert "处理后调用 speak 回答" in result["content"]
+    assert result["content"] == "hello\n处理后调用 speak 回答"
 
 
 def test_send_fallback_prefixes_user_mention() -> None:
@@ -83,7 +84,7 @@ def test_send_fallback_prefixes_user_mention() -> None:
             )
 
     assert result["ok"] is True
-    assert result["content"].startswith("<@1477701379437891695> [roamer-fallback] ")
+    assert result["content"] == "<@1477701379437891695> help\n通过 Roamer 语音回复"
     assert captured["body"]["content"] == result["content"]
 
 
@@ -98,7 +99,7 @@ def test_send_fallback_prefixes_role_mention_when_no_user() -> None:
             )
 
     assert result["ok"] is True
-    assert result["content"].startswith("<@&42> [roamer-fallback] ")
+    assert result["content"] == "<@&42> help\n通过 Roamer 语音回复"
 
 
 def test_send_fallback_prefixes_raw_mention_when_configured() -> None:
@@ -112,7 +113,7 @@ def test_send_fallback_prefixes_raw_mention_when_configured() -> None:
             )
 
     assert result["ok"] is True
-    assert result["content"].startswith("@Richerd [roamer-fallback] ")
+    assert result["content"] == "@Richerd help\n通过 Roamer 语音回复"
 
 
 def test_send_fallback_http_error() -> None:

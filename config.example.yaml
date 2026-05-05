@@ -125,4 +125,4 @@ converse:
     mention_user_id: ""
     mention_role_id: ""
     mention: ""
-    reply_instruction: "请回复给用户。"
+    reply_instruction: "通过 Roamer 语音回复"

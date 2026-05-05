@@ -116,6 +116,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "mention_user_id": "",
             "mention_role_id": "",
             "mention": "",
+            "reply_instruction": "通过 Roamer 语音回复",
         },
     },
 }
