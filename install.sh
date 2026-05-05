@@ -32,6 +32,10 @@ service_name="${ROAMER_SERVICE_NAME:-roamer-serve.service}"
 service_src="$repo_dir/systemd/roamer-serve.service"
 service_dst="/etc/systemd/system/$service_name"
 dropin_dir="/etc/systemd/system/$service_name.d"
+wake_service_name="${ROAMER_WAKE_SERVICE_NAME:-roamer-wake.service}"
+wake_service_src="$repo_dir/systemd/roamer-wake.service"
+wake_service_dst="/etc/systemd/system/$wake_service_name"
+wake_dropin_dir="/etc/systemd/system/$wake_service_name.d"
 
 [[ "$(uname -s)" == "Linux" ]] || die "install.sh must run on Roamer/Linux"
 have sudo || die "sudo is required"
@@ -42,6 +46,7 @@ id "$roamer_user" >/dev/null 2>&1 || die "user not found: $roamer_user"
 require_file "$repo_dir/pyproject.toml"
 require_file "$repo_dir/config.yaml"
 require_file "$service_src"
+require_file "$wake_service_src"
 require_file "$repo_dir/scripts/init-roamer-proxy.sh"
 require_dir "$roamer_home"
 
@@ -59,7 +64,7 @@ if [[ ! -x "$venv_dir/bin/python" ]]; then
   sudo -u "$roamer_user" mkdir -p "$(dirname "$venv_dir")"
   sudo -u "$roamer_user" python3 -m venv "$venv_dir"
 fi
-sudo -u "$roamer_user" "$venv_dir/bin/python" -m pip install -e "$repo_dir[speech]"
+sudo -u "$roamer_user" "$venv_dir/bin/python" -m pip install -e "$repo_dir[speech,gpio]"
 
 if [[ ! -x "$venv_dir/bin/roamer" ]]; then
   die "roamer entrypoint missing after pip install: $venv_dir/bin/roamer"
@@ -107,11 +112,58 @@ sudo tee "$dropin_dir/env.conf" >/dev/null <<EOF
 EnvironmentFile=$system_env_file
 EOF
 
+wake_enabled="$("$venv_dir/bin/python" - "$repo_dir/config.yaml" <<'PY'
+import sys
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    config = yaml.safe_load(f) or {}
+wakeword = config.get("converse", {}).get("wakeword", {})
+print(
+    "yes"
+    if wakeword.get("enabled") is True and wakeword.get("driver") == "su03t_gpio"
+    else "no"
+)
+PY
+)"
+
+if [[ "$wake_enabled" == "yes" ]]; then
+  log "verifying GPIO dependency for $wake_service_name"
+  sudo -u "$roamer_user" "$venv_dir/bin/python" - <<'PY'
+import gpiod  # noqa: F401
+PY
+
+  log "installing $wake_service_name"
+  sudo install -m 0644 -o root -g root "$wake_service_src" "$wake_service_dst"
+  sudo install -d -m 0755 -o root -g root "$wake_dropin_dir"
+  sudo tee "$wake_dropin_dir/user.conf" >/dev/null <<EOF
+[Service]
+User=$roamer_user
+Group=$roamer_user
+Environment=HOME=$roamer_home
+Environment=XDG_RUNTIME_DIR=/run/user/$roamer_uid
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$roamer_uid/bus
+EOF
+  sudo tee "$wake_dropin_dir/env.conf" >/dev/null <<EOF
+[Service]
+EnvironmentFile=$system_env_file
+EOF
+else
+  log "$wake_service_name not enabled by config; skipping wake service install"
+fi
+
 log "starting $service_name"
 sudo systemctl daemon-reload
 sudo systemctl enable --now "$service_name" >/dev/null
 sudo systemctl restart "$service_name"
 systemctl is-active --quiet "$service_name" || die "$service_name is not active after restart"
+
+if [[ "$wake_enabled" == "yes" ]]; then
+  log "starting $wake_service_name"
+  sudo systemctl enable --now "$wake_service_name" >/dev/null
+  sudo systemctl restart "$wake_service_name"
+  systemctl is-active --quiet "$wake_service_name" || die "$wake_service_name is not active after restart"
+fi
 
 log "verifying Roamer daemon"
 for _ in $(seq 1 30); do

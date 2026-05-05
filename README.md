@@ -181,6 +181,18 @@ Roamer's production install on the Pi is expected to run from:
 - runtime env: `/home/richerd/.config/roamer/env`
 - systemd env: `/etc/roamer/roamer.env`
 - daemon: `roamer-serve.service`
+- hands-free wake: `roamer-wake.service`
+
+SU-03T wake wiring:
+
+```text
+SU-03T VCC  -> Raspberry Pi 5V, physical pin 2 or 4
+SU-03T GND  -> Raspberry Pi GND, physical pin 6
+SU-03T OUT  -> Raspberry Pi GPIO17 / BCM17, physical pin 11
+```
+
+`SU-03T 3V3` is the module's regulated 3.3V output, not the normal supply input
+for this setup. Confirm the OUT pin is 3.3V logic before connecting it to GPIO17.
 
 Create the runtime secret file before installing. Do not commit this file.
 
@@ -205,11 +217,12 @@ The installer fails fast if required files or values are missing. It:
 
 - verifies `config.yaml`, `systemd/roamer-serve.service`, `scripts/init-roamer-proxy.sh`, and `DISCORD_BOT_TOKEN`
 - creates or reuses `/home/richerd/.venv/roamer`
-- installs Roamer with speech dependencies
+- installs Roamer with speech and GPIO dependencies
 - points `/usr/local/bin/roamer` at the virtualenv entrypoint
 - runs proxy discovery and keeps proxy values in `~/.config/roamer/env`
 - writes `/etc/roamer/roamer.env` for systemd without exposing secrets in git
 - installs drop-ins so `roamer-serve.service` runs as `richerd`, loads the env file, and can reach the user's PulseAudio session
+- installs and starts `roamer-wake.service` when `converse.wakeword.driver` is `su03t_gpio`
 - enables, restarts, and verifies the daemon
 
 Post-install checks:
@@ -217,6 +230,7 @@ Post-install checks:
 ```bash
 roamer serve ping
 roamer serve status
+roamer wake --once --timeout 30
 roamer listen --timeout 1 --text-only
 roamer converse --no-wakeword --no-sound --timeout 2 --max-turns 1
 ```
