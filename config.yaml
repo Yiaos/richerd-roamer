@@ -31,7 +31,7 @@ fswebcam:
   height: 720
 
 alsa:
-  capture_device: "hw:0,0"
+  capture_device: "hw:2,0"
   playback_device: "default"
   sample_rate: 16000
   channels: 2
