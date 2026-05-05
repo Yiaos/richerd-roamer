@@ -173,9 +173,57 @@ Project docs live in the knowledge base:
 
 ## Installation
 
+Roamer's production install on the Pi is expected to run from:
+
+- repo: `/home/richerd/worksp/richerd-roamer`
+- virtualenv: `/home/richerd/.venv/roamer`
+- CLI symlink: `/usr/local/bin/roamer`
+- runtime env: `/home/richerd/.config/roamer/env`
+- systemd env: `/etc/roamer/roamer.env`
+- daemon: `roamer-serve.service`
+
+Create the runtime secret file before installing. Do not commit this file.
+
 ```bash
-pip install -e ".[dev,speech]"
+mkdir -p ~/.config/roamer
+chmod 700 ~/.config/roamer
+cat > ~/.config/roamer/env <<'EOF'
+# Roamer runtime secrets. Do not commit.
+export DISCORD_BOT_TOKEN=<discord bot token>
+EOF
+chmod 600 ~/.config/roamer/env
 ```
+
+Run the installer from the Roamer repo on the Pi:
+
+```bash
+cd /home/richerd/worksp/richerd-roamer
+./install.sh
+```
+
+The installer fails fast if required files or values are missing. It:
+
+- verifies `config.yaml`, `systemd/roamer-serve.service`, `scripts/init-roamer-proxy.sh`, and `DISCORD_BOT_TOKEN`
+- creates or reuses `/home/richerd/.venv/roamer`
+- installs Roamer with speech dependencies
+- points `/usr/local/bin/roamer` at the virtualenv entrypoint
+- runs proxy discovery and keeps proxy values in `~/.config/roamer/env`
+- writes `/etc/roamer/roamer.env` for systemd without exposing secrets in git
+- installs drop-ins so `roamer-serve.service` runs as `richerd` and loads the env file
+- enables, restarts, and verifies the daemon
+
+Post-install checks:
+
+```bash
+roamer serve ping
+roamer serve status
+roamer listen --timeout 1 --text-only
+roamer converse --no-wakeword --no-sound --timeout 2 --max-turns 1
+```
+
+`DISCORD_BOT_TOKEN` is required only for Discord fallback: local intents such as
+time, status, position, and reminders run without Discord, but unmatched
+conversation text is sent to Discord by the daemon.
 
 ## License
 
