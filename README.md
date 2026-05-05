@@ -209,7 +209,7 @@ The installer fails fast if required files or values are missing. It:
 - points `/usr/local/bin/roamer` at the virtualenv entrypoint
 - runs proxy discovery and keeps proxy values in `~/.config/roamer/env`
 - writes `/etc/roamer/roamer.env` for systemd without exposing secrets in git
-- installs drop-ins so `roamer-serve.service` runs as `richerd` and loads the env file
+- installs drop-ins so `roamer-serve.service` runs as `richerd`, loads the env file, and can reach the user's PulseAudio session
 - enables, restarts, and verifies the daemon
 
 Post-install checks:

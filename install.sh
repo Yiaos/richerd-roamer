@@ -23,6 +23,7 @@ if ! roamer_home="$(getent passwd "$roamer_user" 2>/dev/null | cut -d: -f6)"; th
   roamer_home=""
 fi
 roamer_home="${ROAMER_HOME:-${roamer_home:-/home/$roamer_user}}"
+roamer_uid="$(id -u "$roamer_user")"
 venv_dir="${ROAMER_VENV:-$roamer_home/.venv/roamer}"
 user_env_file="${ROAMER_ENV_FILE:-$roamer_home/.config/roamer/env}"
 system_env_dir="${ROAMER_SYSTEM_ENV_DIR:-/etc/roamer}"
@@ -98,6 +99,8 @@ sudo tee "$dropin_dir/user.conf" >/dev/null <<EOF
 User=$roamer_user
 Group=$roamer_user
 Environment=HOME=$roamer_home
+Environment=XDG_RUNTIME_DIR=/run/user/$roamer_uid
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$roamer_uid/bus
 EOF
 sudo tee "$dropin_dir/env.conf" >/dev/null <<EOF
 [Service]
