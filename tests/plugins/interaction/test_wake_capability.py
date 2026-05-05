@@ -46,6 +46,18 @@ def test_wake_once_ignores_non_wake_text() -> None:
     assert result["reason"] == "wake_phrase_not_matched"
 
 
+def test_wake_service_mode_keeps_polling_after_empty_timeout() -> None:
+    cap = WakeCapability(_config())
+    cap._wait_for_trigger = Mock(side_effect=[False, True])
+    cap._listen_once = Mock(return_value={"ok": True, "text": "Richard 现在几点了"})
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "local"})
+
+    result = cap.run(once=True, timeout=None, no_sound=True)
+
+    assert result["ok"] is True
+    assert cap._wait_for_trigger.call_count == 2
+
+
 def test_wake_followup_routes_without_wake_phrase() -> None:
     cap = WakeCapability(_config())
     cap._wait_for_trigger = Mock(return_value=True)

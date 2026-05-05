@@ -50,7 +50,9 @@ class WakeCapability(Capability):
 
                 if not self._in_followup():
                     if not self._wait_for_trigger(wait_timeout):
-                        return success(completed=True, reason="wake_timeout", turns=turns)
+                        if deadline is not None:
+                            return success(completed=True, reason="wake_timeout", turns=turns)
+                        continue
 
                 listen_result = self._listen_once(
                     timeout=wait_timeout,
