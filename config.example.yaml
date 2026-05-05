@@ -86,10 +86,23 @@ converse:
 
   wakeword:
     enabled: true
-    driver: openwakeword
+    driver: su03t_gpio
     model: ""
     threshold: 0.5
-    prompt_sound: true
+    gpio_chip: gpiochip0
+    gpio_line: 17
+    edge: rising
+    pull: down
+    debounce_ms: 300
+    min_interval_sec: 1.5
+    pre_roll_sec: 0.8
+    ignore_while_speaking: true
+    prompt_sound: false
+    phrases:
+      - richard
+      - rich erd
+      - 瑞彻德
+    followup_timeout_sec: 10.0
 
   # Minimal v1 intent whitelist seed
   intents:
@@ -110,7 +123,7 @@ converse:
       patterns: ["你在哪个位置", "当前位置"]
 
   endpoint:
-    mode: fixed_recording
+    mode: vad_endpoint
     silence_sec: 2.0
     min_speech_sec: 0.2
     max_record_sec: 10.0

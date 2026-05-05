@@ -95,5 +95,17 @@ def test_default_config_includes_serve_and_endpoint_defaults(tmp_path, monkeypat
     assert config["serve"]["enabled"] is True
     assert config["serve"]["fallback_to_cli"] is True
     assert "prewarm" not in config["serve"]
-    assert config["converse"]["endpoint"]["mode"] == "fixed_recording"
+    assert config["converse"]["endpoint"]["mode"] == "vad_endpoint"
     assert config["converse"]["endpoint"]["silence_sec"] == 2.0
+
+
+def test_default_su03t_wakeword_config() -> None:
+    from roamer.platform.config import DEFAULT_CONFIG
+
+    wakeword = DEFAULT_CONFIG["converse"]["wakeword"]
+    assert wakeword["driver"] == "su03t_gpio"
+    assert wakeword["gpio_line"] == 17
+    assert wakeword["edge"] == "rising"
+    assert wakeword["phrases"] == ["richard", "rich erd", "瑞彻德"]
+    assert wakeword["prompt_sound"] is False
+    assert DEFAULT_CONFIG["converse"]["endpoint"]["mode"] == "vad_endpoint"

@@ -126,4 +126,4 @@ def test_load_config_merges_serve_defaults(monkeypatch, tmp_path: Path) -> None:
     assert config["serve"]["fallback_to_cli"] is False
     assert config["serve"]["enabled"] is True
     assert config["converse"]["endpoint"]["silence_sec"] == 1.5
-    assert config["converse"]["endpoint"]["mode"] == "fixed_recording"
+    assert config["converse"]["endpoint"]["mode"] == "vad_endpoint"
