@@ -78,6 +78,45 @@ def test_converse_r1_no_wakeword_fallback_route() -> None:
     assert result["turns"][0]["route"] == "discord"
 
 
+def test_converse_route_text_reuses_local_intent_flow() -> None:
+    cap = ConverseCapability(_base_config())
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.run_action",
+        return_value={"ok": True, "played": True},
+    ):
+        result = cap.route_text(
+            "现在几点",
+            session_id="s1",
+            turn_id=1,
+            no_sound=True,
+        )
+
+    assert result["turn_id"] == 1
+    assert result["text"] == "现在几点"
+    assert result["matched"] is True
+    assert result["route"] == "local"
+    assert result["action"] == "time.now"
+
+
+def test_converse_route_text_reuses_discord_fallback_flow() -> None:
+    cap = ConverseCapability(_base_config())
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.send_fallback",
+        return_value={"ok": True, "sent": False, "skipped": True},
+    ):
+        result = cap.route_text(
+            "讲个笑话",
+            session_id="s1",
+            turn_id=1,
+            no_sound=True,
+        )
+
+    assert result["route"] == "discord"
+    assert result["matched"] is False
+
+
 def test_converse_listen_failure_returns_canonical_error() -> None:
     cap = ConverseCapability(_base_config())
 
