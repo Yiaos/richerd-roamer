@@ -111,6 +111,12 @@ sudo systemctl restart "$service_name"
 systemctl is-active --quiet "$service_name" || die "$service_name is not active after restart"
 
 log "verifying Roamer daemon"
+for _ in $(seq 1 30); do
+  if "/usr/local/bin/roamer" serve ping >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
 "/usr/local/bin/roamer" serve ping >/dev/null
 "/usr/local/bin/roamer" serve status >/dev/null
 
