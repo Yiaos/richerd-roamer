@@ -11,6 +11,59 @@ from roamer.plugins.interaction.drivers.audio.base import AudioDriver
 from roamer.plugins.interaction.drivers.registry import register_driver
 
 
+class _AlsaChunkStream:
+    """Closeable raw PCM iterator backed by an arecord process."""
+
+    def __init__(
+        self,
+        *,
+        cmd: list[str],
+        read_size: int,
+        max_chunks: int | None,
+    ):
+        self._process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self._read_size = read_size
+        self._max_chunks = max_chunks
+        self._emitted = 0
+        self._closed = False
+
+    def __iter__(self) -> "_AlsaChunkStream":
+        return self
+
+    def __next__(self) -> bytes:
+        if self._closed:
+            raise StopIteration
+        if self._max_chunks is not None and self._emitted >= self._max_chunks:
+            self.close()
+            raise StopIteration
+        if self._process.stdout is None:
+            self.close()
+            raise RuntimeError("arecord stdout unavailable")
+
+        chunk = self._process.stdout.read(self._read_size)
+        if not chunk:
+            self.close()
+            raise StopIteration
+        self._emitted += 1
+        return chunk
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        if self._process.poll() is None:
+            self._process.terminate()
+            try:
+                self._process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+                self._process.wait(timeout=1)
+
+
 class AlsaDriver(AudioDriver):
     """Audio driver using ALSA tools (arecord/aplay)."""
 
@@ -18,7 +71,7 @@ class AlsaDriver(AudioDriver):
         self,
         *,
         chunk_duration_sec: float = 0.032,
-        max_duration_sec: float = 10.0,
+        max_duration_sec: float | None = 10.0,
     ) -> Iterator[bytes]:
         """Stream raw PCM chunks from arecord stdout.
 
@@ -47,31 +100,15 @@ class AlsaDriver(AudioDriver):
             "raw",
         ]
 
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+        return _AlsaChunkStream(
+            cmd=cmd,
+            read_size=read_size,
+            max_chunks=(
+                None
+                if max_duration_sec is None
+                else max(1, int(max_duration_sec / chunk_duration_sec) + 1)
+            ),
         )
-        emitted = 0
-        max_chunks = max(1, int(max_duration_sec / chunk_duration_sec) + 1)
-
-        try:
-            if process.stdout is None:
-                raise RuntimeError("arecord stdout unavailable")
-            while emitted < max_chunks:
-                chunk = process.stdout.read(read_size)
-                if not chunk:
-                    break
-                emitted += 1
-                yield chunk
-        finally:
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=1)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=1)
 
     def record(self, output: str, duration: float) -> dict[str, Any]:
         """Record audio using arecord.

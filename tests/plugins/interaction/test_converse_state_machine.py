@@ -78,6 +78,169 @@ def test_converse_r1_no_wakeword_fallback_route() -> None:
     assert result["turns"][0]["route"] == "discord"
 
 
+def test_converse_route_text_reuses_local_intent_flow() -> None:
+    cap = ConverseCapability(_base_config())
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.run_action",
+        return_value={"ok": True, "played": True},
+    ):
+        result = cap.route_text(
+            "现在几点",
+            session_id="s1",
+            turn_id=1,
+            no_sound=True,
+        )
+
+    assert result["turn_id"] == 1
+    assert result["text"] == "现在几点"
+    assert result["matched"] is True
+    assert result["route"] == "local"
+    assert result["action"] == "time.now"
+
+
+def test_converse_logs_route_before_local_side_effect(monkeypatch) -> None:
+    events = []
+    order = []
+    cap = ConverseCapability(_base_config())
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.capabilities.converse.log_event",
+        lambda component, event, **fields: events.append((component, event, fields))
+        or order.append(event),
+    )
+
+    def _run_action(name: str, **_kwargs):
+        order.append(name)
+        return {"ok": True, "played": True}
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.run_action",
+        side_effect=_run_action,
+    ):
+        result = cap.route_text("现在几点", session_id="s1", turn_id=1, no_sound=False)
+
+    assert result["route"] == "local"
+    assert order[0] == "route_text"
+    assert order[1] == "speak"
+    assert events[0][2]["route"] == "local"
+    assert events[0][2]["action"] == "time.now"
+
+
+def test_converse_logs_route_before_discord_fallback(monkeypatch) -> None:
+    events = []
+    order = []
+    cap = ConverseCapability(_base_config())
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.capabilities.converse.log_event",
+        lambda component, event, **fields: events.append((component, event, fields))
+        or order.append(event),
+    )
+
+    def _send_fallback(*_args, **_kwargs):
+        order.append("send_fallback")
+        return {"ok": True, "sent": True}
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.send_fallback",
+        side_effect=_send_fallback,
+    ):
+        result = cap.route_text("讲个笑话", session_id="s1", turn_id=1, no_sound=True)
+
+    assert result["route"] == "discord"
+    assert order[0] == "route_text"
+    assert order[1] == "send_fallback"
+    assert events[0][2]["route"] == "discord"
+
+
+def test_converse_route_text_reuses_discord_fallback_flow() -> None:
+    cap = ConverseCapability(_base_config())
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.send_fallback",
+        side_effect=lambda text, *, config, session_id, turn_id, timeout_sec: {
+            "ok": True,
+            "sent": False,
+            "skipped": True,
+            "logging": config.get("logging"),
+        },
+    ):
+        result = cap.route_text(
+            "讲个笑话",
+            session_id="s1",
+            turn_id=1,
+            no_sound=True,
+        )
+
+    assert result["route"] == "discord"
+    assert result["matched"] is False
+    assert result["fallback"]["logging"] == {}
+
+
+def test_converse_route_text_propagates_discord_fallback_failure() -> None:
+    cap = ConverseCapability(_base_config())
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.send_fallback",
+        return_value={
+            "ok": False,
+            "error": "converse_discord_send_failed",
+            "message": "missing token",
+            "error_code": ErrorCode.CONVERSE_DISCORD_SEND_FAILED,
+        },
+    ):
+        result = cap.route_text(
+            "讲个笑话",
+            session_id="s1",
+            turn_id=1,
+            no_sound=True,
+        )
+
+    assert result["ok"] is False
+    assert result["route"] == "discord"
+    assert result["error_code"] == ErrorCode.CONVERSE_DISCORD_SEND_FAILED
+
+
+def test_converse_run_returns_error_when_discord_fallback_fails() -> None:
+    cap = ConverseCapability(_base_config())
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.run_action",
+        return_value={"ok": True, "text": "讲个笑话"},
+    ):
+        with patch(
+            "roamer.plugins.interaction.capabilities.converse.send_fallback",
+            return_value={
+                "ok": False,
+                "error": "converse_discord_send_failed",
+                "message": "missing token",
+                "error_code": ErrorCode.CONVERSE_DISCORD_SEND_FAILED,
+            },
+        ):
+            result = cap.run(no_wakeword=True, timeout=0.1, no_sound=True, max_turns=1)
+
+    assert result["ok"] is False
+    assert result["error_code"] == ErrorCode.CONVERSE_DISCORD_SEND_FAILED
+    assert result["turns"][0]["route"] == "discord"
+
+
+def test_converse_route_text_can_suppress_discord_fallback() -> None:
+    cap = ConverseCapability(_base_config())
+
+    with patch("roamer.plugins.interaction.capabilities.converse.send_fallback") as fallback:
+        result = cap.route_text(
+            "嗯",
+            session_id="s1",
+            turn_id=1,
+            no_sound=True,
+            allow_fallback=False,
+        )
+
+    assert result["route"] == "ignored"
+    assert result["matched"] is False
+    assert result["reason"] == "fallback_disabled"
+    fallback.assert_not_called()
+
+
 def test_converse_listen_failure_returns_canonical_error() -> None:
     cap = ConverseCapability(_base_config())
 

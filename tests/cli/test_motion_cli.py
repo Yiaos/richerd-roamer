@@ -80,9 +80,21 @@ def test_motion_home_wait_dispatches_run_action(monkeypatch) -> None:
     assert '"command": "motion.home"' in result.output
 
 
-def test_motion_status_missing_valetudo_config_returns_contract_error() -> None:
+def test_motion_status_missing_valetudo_config_returns_contract_error(tmp_path) -> None:
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "drivers:",
+                "  motion: valetudo",
+                "valetudo:",
+                "  timeout_sec: 8.0",
+            ]
+        )
+    )
+
     runner = CliRunner()
-    result = runner.invoke(main, ["motion", "status"])
+    result = runner.invoke(main, ["--config", str(config), "motion", "status"])
 
     assert result.exit_code == 2
     assert '"command": "motion.status"' in result.output

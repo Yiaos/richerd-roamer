@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 
 from roamer.platform.contract import ErrorCode
+from roamer.platform.logging import log_event
 from roamer.platform.output import error, success
 
 
@@ -107,6 +108,11 @@ class ChunkVadAdapter:
             return max(self._threshold, 1.0)
         return 0.0
 
+    def reset_stream(self) -> None:
+        reset = getattr(self._vad, "reset_stream", None)
+        if callable(reset):
+            reset()
+
     def _minimum_samples(self, sample_rate: int) -> int:
         if sample_rate == 16000:
             return self._MIN_16K_SAMPLES
@@ -133,6 +139,11 @@ class EndpointRecorder:
 
     def record(self) -> dict[str, Any]:
         cfg = self._config
+        reset_stream = getattr(self._vad_probability, "__self__", None)
+        if reset_stream is not None:
+            reset = getattr(reset_stream, "reset_stream", None)
+            if callable(reset):
+                reset()
         pre_chunks = max(0, int(round(cfg.pre_speech_padding_sec / cfg.chunk_duration_sec)))
         silence_chunks = max(1, int(round(cfg.silence_sec / cfg.chunk_duration_sec)))
         min_speech_chunks = max(1, int(round(cfg.min_speech_sec / cfg.chunk_duration_sec)))
@@ -147,6 +158,16 @@ class EndpointRecorder:
         silence_after_speech = 0
         endpoint_latency_sec: float | None = None
         start_time = self._clock()
+        log_event(
+            "endpoint",
+            "record_start",
+            max_record_sec=cfg.max_record_sec,
+            silence_sec=cfg.silence_sec,
+            min_speech_sec=cfg.min_speech_sec,
+            no_speech_timeout_sec=cfg.no_speech_timeout_sec,
+            chunk_duration_sec=cfg.chunk_duration_sec,
+            threshold=cfg.threshold,
+        )
 
         for raw_chunk in self._chunk_source:
             if not raw_chunk:
@@ -163,19 +184,39 @@ class EndpointRecorder:
                     recorded.append(raw_chunk)
                     speech_chunks += 1
                     silence_after_speech = 0
+                    log_event(
+                        "endpoint",
+                        "speech_start",
+                        total_chunks=total_chunks,
+                        speech_chunks=speech_chunks,
+                        probability=round(prob, 6),
+                        record_duration_sec=round(total_chunks * cfg.chunk_duration_sec, 6),
+                    )
                 else:
                     prefix.append(raw_chunk)
                     if total_chunks >= no_speech_chunks:
+                        metrics = self._metrics(
+                            total_chunks=total_chunks,
+                            speech_chunks=0,
+                            endpoint_latency_sec=None,
+                            wall_duration_sec=self._clock() - start_time,
+                        )
+                        log_event(
+                            "endpoint",
+                            "record_failed",
+                            ok=False,
+                            reason="no_speech_timeout",
+                            error_code=ErrorCode.SPEECH_VAD_NO_SPEECH,
+                            total_chunks=total_chunks,
+                            speech_chunks=0,
+                            endpoint_metrics=metrics,
+                            **metrics,
+                        )
                         return error(
                             "vad_no_speech",
                             "No speech detected before endpoint timeout",
                             error_code=ErrorCode.SPEECH_VAD_NO_SPEECH,
-                            endpoint_metrics=self._metrics(
-                                total_chunks=total_chunks,
-                                speech_chunks=0,
-                                endpoint_latency_sec=None,
-                                wall_duration_sec=self._clock() - start_time,
-                            ),
+                            endpoint_metrics=metrics,
                         )
             else:
                 recorded.append(raw_chunk)
@@ -190,6 +231,15 @@ class EndpointRecorder:
                     and silence_after_speech >= silence_chunks
                 ):
                     endpoint_latency_sec = silence_after_speech * cfg.chunk_duration_sec
+                    log_event(
+                        "endpoint",
+                        "endpoint_reached",
+                        total_chunks=total_chunks,
+                        speech_chunks=speech_chunks,
+                        silence_after_speech=silence_after_speech,
+                        endpoint_latency_sec=round(endpoint_latency_sec, 6),
+                        record_duration_sec=round(total_chunks * cfg.chunk_duration_sec, 6),
+                    )
                     break
 
             if total_chunks >= max_chunks:
@@ -197,16 +247,28 @@ class EndpointRecorder:
                 break
 
         if not speech_started:
+            metrics = self._metrics(
+                total_chunks=total_chunks,
+                speech_chunks=0,
+                endpoint_latency_sec=None,
+                wall_duration_sec=self._clock() - start_time,
+            )
+            log_event(
+                "endpoint",
+                "record_failed",
+                ok=False,
+                reason="stream_ended_no_speech",
+                error_code=ErrorCode.SPEECH_VAD_NO_SPEECH,
+                total_chunks=total_chunks,
+                speech_chunks=0,
+                endpoint_metrics=metrics,
+                **metrics,
+            )
             return error(
                 "vad_no_speech",
                 "No speech detected before audio stream ended",
                 error_code=ErrorCode.SPEECH_VAD_NO_SPEECH,
-                endpoint_metrics=self._metrics(
-                    total_chunks=total_chunks,
-                    speech_chunks=0,
-                    endpoint_latency_sec=None,
-                    wall_duration_sec=self._clock() - start_time,
-                ),
+                endpoint_metrics=metrics,
             )
 
         self._save_wav(recorded)
@@ -216,6 +278,15 @@ class EndpointRecorder:
             speech_chunks=speech_chunks,
             endpoint_latency_sec=endpoint_latency_sec,
             wall_duration_sec=self._clock() - start_time,
+        )
+        log_event(
+            "endpoint",
+            "record_done",
+            ok=True,
+            total_chunks=total_chunks,
+            speech_chunks=speech_chunks,
+            endpoint_metrics=metrics,
+            **metrics,
         )
         return success(
             path=self._output_path,

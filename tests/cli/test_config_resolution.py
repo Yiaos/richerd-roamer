@@ -77,6 +77,30 @@ def test_main_uses_shared_resolved_config(monkeypatch, tmp_path: Path) -> None:
     assert captured["path"] is None
 
 
+def test_main_initializes_runtime_logging(monkeypatch) -> None:
+    config = {"logging": {"enabled": True, "dir": "/tmp/roamer-test-logs"}}
+    captured: dict = {}
+
+    monkeypatch.setattr("roamer.cli.main.load_config", lambda path: config)
+    monkeypatch.setattr(
+        "roamer.cli.main.setup_logging",
+        lambda loaded: captured.setdefault("config", loaded),
+    )
+    monkeypatch.setattr(
+        "roamer.cli.main._ensure_perception_plugin_registered",
+        lambda _config: None,
+    )
+    monkeypatch.setattr(
+        "roamer.cli.main.run_action",
+        lambda action_name, **kwargs: {"ok": True, "action": action_name},
+    )
+
+    result = CliRunner().invoke(main, ["sense"])
+
+    assert result.exit_code == 0
+    assert captured["config"] is config
+
+
 def test_main_uses_explicit_config_over_defaults(monkeypatch, tmp_path: Path) -> None:
     explicit_config = tmp_path / "explicit.yaml"
     explicit_config.write_text("motion:\n  arrival_tolerance: 999\n", encoding="utf-8")
@@ -126,4 +150,4 @@ def test_load_config_merges_serve_defaults(monkeypatch, tmp_path: Path) -> None:
     assert config["serve"]["fallback_to_cli"] is False
     assert config["serve"]["enabled"] is True
     assert config["converse"]["endpoint"]["silence_sec"] == 1.5
-    assert config["converse"]["endpoint"]["mode"] == "fixed_recording"
+    assert config["converse"]["endpoint"]["mode"] == "vad_endpoint"

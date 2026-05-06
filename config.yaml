@@ -59,6 +59,16 @@ serve:
   request_timeout_sec: 60.0
   fallback_to_cli: true
 
+logging:
+  enabled: true
+  level: INFO
+  dir: /var/log/roamer
+  max_bytes: 10485760
+  backup_count: 10
+  retention_days: 3
+  log_transcripts: true
+  log_audio_paths: false
+
 valetudo:
   host: 10.0.0.226
   port: 80
@@ -86,11 +96,24 @@ converse:
   no_sound_default: false
 
   wakeword:
-    enabled: false
-    driver: openwakeword
+    enabled: true
+    driver: su03t_gpio
     model: ""
     threshold: 0.5
+    gpio_chip: gpiochip0
+    gpio_line: 17
+    edge: rising
+    pull: down
+    debounce_ms: 300
+    min_interval_sec: 1.5
+    pre_roll_sec: 0.8
+    ignore_while_speaking: true
     prompt_sound: false
+    phrases:
+      - richard
+      - rich erd
+      - 瑞彻德
+    followup_timeout_sec: 10.0
 
   # Minimal v1 intent whitelist seed
   intents:
@@ -111,7 +134,7 @@ converse:
       patterns: ["你在哪个位置", "当前位置"]
 
   endpoint:
-    mode: fixed_recording
+    mode: vad_endpoint
     silence_sec: 2.0
     min_speech_sec: 0.2
     max_record_sec: 10.0
@@ -125,4 +148,4 @@ converse:
     mention_user_id: "1477701379437891695"
     mention_role_id: ""
     mention: ""
-    reply_instruction: "通过 Roamer 语音回复"
+    reply_instruction: "通过 roamer control node 语音播报回复"

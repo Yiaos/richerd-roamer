@@ -180,7 +180,39 @@ Roamer's production install on the Pi is expected to run from:
 - CLI symlink: `/usr/local/bin/roamer`
 - runtime env: `/home/richerd/.config/roamer/env`
 - systemd env: `/etc/roamer/roamer.env`
+- runtime log: `/var/log/roamer/roamer.log`
 - daemon: `roamer-serve.service`
+- hands-free wake: `roamer-wake.service`
+
+SU-03T wake wiring:
+
+```text
+SU-03T VCC  -> Raspberry Pi 5V, physical pin 2 or 4
+SU-03T GND  -> Raspberry Pi GND, physical pin 6
+SU-03T OUT  -> Raspberry Pi GPIO17 / BCM17, physical pin 11
+```
+
+Hardware wiring diagram:
+
+```text
+              Raspberry Pi GPIO header
+              +------------------------------+
+              | pin 2/4  5V  ---------------+--> SU-03T VCC
+              | pin 6    GND ---------------+--> SU-03T GND
+              | pin 11   GPIO17 / BCM17 <---+--- SU-03T OUT
+              +------------------------------+
+
+              SU-03T module
+              +------------------------------+
+              | VCC  input: use Pi 5V        |
+              | GND  common ground           |
+              | OUT  3.3V logic wake signal  |
+              | 3V3  regulated output only   |
+              +------------------------------+
+```
+
+`SU-03T 3V3` is the module's regulated 3.3V output, not the normal supply input
+for this setup. Confirm the OUT pin is 3.3V logic before connecting it to GPIO17.
 
 Create the runtime secret file before installing. Do not commit this file.
 
@@ -205,11 +237,13 @@ The installer fails fast if required files or values are missing. It:
 
 - verifies `config.yaml`, `systemd/roamer-serve.service`, `scripts/init-roamer-proxy.sh`, and `DISCORD_BOT_TOKEN`
 - creates or reuses `/home/richerd/.venv/roamer`
-- installs Roamer with speech dependencies
+- installs Roamer with speech and GPIO dependencies
 - points `/usr/local/bin/roamer` at the virtualenv entrypoint
+- creates `/var/log/roamer` for structured runtime logs
 - runs proxy discovery and keeps proxy values in `~/.config/roamer/env`
 - writes `/etc/roamer/roamer.env` for systemd without exposing secrets in git
 - installs drop-ins so `roamer-serve.service` runs as `richerd`, loads the env file, and can reach the user's PulseAudio session
+- installs and starts `roamer-wake.service` when `converse.wakeword.driver` is `su03t_gpio`
 - enables, restarts, and verifies the daemon
 
 Post-install checks:
@@ -217,9 +251,23 @@ Post-install checks:
 ```bash
 roamer serve ping
 roamer serve status
+roamer wake --once --timeout 30
 roamer listen --timeout 1 --text-only
 roamer converse --no-wakeword --no-sound --timeout 2 --max-turns 1
 ```
+
+Runtime logs:
+
+```bash
+tail -f /var/log/roamer/roamer.log
+find /var/log/roamer -maxdepth 1 -type f -name 'roamer.log*' -ls
+```
+
+Roamer writes JSONL runtime events for `serve`, `wake`, `listen`, `converse`, and
+`speak`. Sensitive values such as tokens, passwords, proxy URLs, and authorization
+fields are masked while keeping the first and last characters for debugging.
+Logs rotate at 10 MB, keep up to 10 rotated files, and files older than 3 days
+are deleted automatically.
 
 `DISCORD_BOT_TOKEN` is required only for Discord fallback: local intents such as
 time, status, position, and reminders run without Discord, but unmatched

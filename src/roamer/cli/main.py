@@ -7,6 +7,7 @@ import click
 
 from roamer.platform.config import load_config
 from roamer.platform.contract import ErrorCode, exit_category_for_error
+from roamer.platform.logging import setup_logging
 from roamer.platform.output import attach_contract_fields, error
 from roamer.platform.plugin_registry import registry
 from roamer.platform.runtime import run_action
@@ -68,6 +69,7 @@ def _ensure_interaction_plugin_registered(config: dict) -> None:
         "speak",
         "remind",
         "converse",
+        "wake",
         "audio.record",
         "audio.play",
         "bt.status",
@@ -103,6 +105,7 @@ def main(ctx: click.Context, config: Path | None) -> None:
     """Roamer - Richerd's physical body CLI."""
     ctx.ensure_object(dict)
     ctx.obj["config"] = load_config(config)
+    setup_logging(ctx.obj["config"])
 
 
 # Watch - visual perception
@@ -301,6 +304,24 @@ def converse(
     result = run_action("converse", **args)
     result["served_by"] = "cli"
     emit_contract_result(ctx, "converse", result)
+
+
+# Wake - hands-free SU-03T loop
+@main.command()
+@click.option("--once", is_flag=True, help="Exit after one wake attempt")
+@click.option("--timeout", type=float, default=None, help="Maximum wait time in seconds")
+@click.option("--no-sound", is_flag=True, help="Disable spoken responses")
+@click.pass_context
+def wake(
+    ctx: click.Context,
+    once: bool,
+    timeout: float | None,
+    no_sound: bool,
+) -> None:
+    """Run hands-free wake loop."""
+    _ensure_interaction_plugin_registered(ctx.obj["config"])
+    result = run_action("wake", once=once, timeout=timeout, no_sound=no_sound)
+    emit_contract_result(ctx, "wake", result)
 
 
 # Serve - long-running local daemon

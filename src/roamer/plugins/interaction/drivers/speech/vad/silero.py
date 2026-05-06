@@ -23,6 +23,9 @@ class SileroDriver(VADDriver):
         self._session = None
         self._state = None
         self._sr = None
+        self._stream_state = None
+        self._stream_context = np.zeros(64, dtype=np.float32)
+        self._stream_sample_rate = None
 
     def _load_model(self) -> bool:
         """Load the ONNX model if not already loaded.
@@ -49,11 +52,70 @@ class SileroDriver(VADDriver):
             )
             # Initialize state for silero-vad
             self._state = np.zeros((2, 1, 128), dtype=np.float32)
+            self.reset_stream()
             # sr should be 0-dim array (scalar)
             self._sr = np.array(16000, dtype=np.int64)
             return True
         except Exception:
             return False
+
+    def reset_stream(self) -> None:
+        """Reset continuous VAD state used by probability()."""
+        self._stream_state = np.zeros((2, 1, 128), dtype=np.float32)
+        self._stream_context = np.zeros(64, dtype=np.float32)
+        self._stream_sample_rate = None
+
+    def probability(self, audio: np.ndarray, sample_rate: int) -> float:
+        """Return streaming speech probability for one or more audio chunks.
+
+        Unlike detect(), this keeps Silero model state and context across calls.
+        Endpoint recording calls reset_stream() at utterance boundaries.
+        """
+        if not self._load_model():
+            return 0.0
+
+        audio = self._prepare_audio(audio, sample_rate)
+        if audio.size < 512:
+            return 0.0
+
+        if self._stream_state is None or self._stream_sample_rate != 16000:
+            self.reset_stream()
+        self._stream_sample_rate = 16000
+
+        probabilities: list[float] = []
+        for i in range(0, len(audio) - 512 + 1, 512):
+            chunk = audio[i : i + 512]
+            x = np.concatenate([self._stream_context, chunk]).reshape(1, -1).astype(np.float32)
+            try:
+                ort_inputs = {
+                    "input": x,
+                    "state": self._stream_state,
+                    "sr": self._sr,
+                }
+                output, self._stream_state = self._session.run(None, ort_inputs)
+            except Exception:
+                return 0.0
+            self._stream_context = chunk[-64:]
+            probabilities.append(float(output[0][0]))
+
+        return max(probabilities) if probabilities else 0.0
+
+    def _prepare_audio(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
+        if len(audio.shape) > 1:
+            audio = audio.mean(axis=1)
+        if audio.dtype != np.float32:
+            audio = audio.astype(np.float32)
+        max_val = np.abs(audio).max() if audio.size else 0.0
+        if max_val > 1.0:
+            audio = audio / max_val
+        if sample_rate != 16000:
+            ratio = 16000 / sample_rate
+            new_length = int(len(audio) * ratio)
+            if new_length <= 0:
+                return np.array([], dtype=np.float32)
+            indices = np.linspace(0, len(audio) - 1, new_length)
+            audio = np.interp(indices, np.arange(len(audio)), audio).astype(np.float32)
+        return audio
 
     def detect(
         self, audio: np.ndarray, sample_rate: int, debug: bool = False

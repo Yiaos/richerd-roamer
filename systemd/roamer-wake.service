@@ -1,0 +1,17 @@
+[Unit]
+Description=Roamer SU-03T wake loop
+After=network-online.target roamer-serve.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/richerd/worksp/richerd-roamer
+ExecStart=/home/richerd/.venv/roamer/bin/roamer wake
+Restart=on-failure
+RestartSec=2
+RuntimeDirectory=roamer-wake
+RuntimeDirectoryMode=0700
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

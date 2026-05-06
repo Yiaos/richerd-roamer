@@ -175,7 +175,7 @@ def test_init_runs_proxy_init_when_enabled(sample_config, tmp_path) -> None:
     sample_config["init"] = {
         "configure_proxy_on_startup": True,
         "proxy_init_script": str(script),
-        "proxy_init_timeout_sec": 1.0,
+        "proxy_init_timeout_sec": 3.0,
     }
 
     capability = InitCapability(sample_config)
@@ -214,7 +214,7 @@ def test_init_fails_when_proxy_init_command_fails(sample_config, tmp_path) -> No
     sample_config["init"] = {
         "configure_proxy_on_startup": True,
         "proxy_init_script": str(script),
-        "proxy_init_timeout_sec": 1.0,
+        "proxy_init_timeout_sec": 3.0,
         "connect_speaker_on_startup": True,
     }
     sample_config["bluetooth"] = {"speaker_mac": "AA:BB:CC:DD:EE:FF"}

@@ -8,6 +8,7 @@ import uuid
 from typing import Any
 
 from roamer.platform.contract import ErrorCode
+from roamer.platform.logging import log_event
 from roamer.platform.output import error, success
 from roamer.platform.plugin_registry import registry
 from roamer.platform.runtime import run_action
@@ -67,7 +68,7 @@ class ConverseCapability(Capability):
     ) -> dict[str, Any]:
         return send_fallback(
             text,
-            config={"discord": discord_cfg},
+            config={"discord": discord_cfg, "logging": self.config.get("logging", {})},
             session_id=session_id,
             turn_id=turn_id,
             timeout_sec=3.0,
@@ -97,6 +98,161 @@ class ConverseCapability(Capability):
                 error_code=ErrorCode.CONVERSE_WAKEWORD_UNAVAILABLE,
             )
 
+    def route_text(
+        self,
+        text: str,
+        *,
+        session_id: str,
+        turn_id: int,
+        no_sound: bool,
+        allow_fallback: bool = True,
+    ) -> dict[str, Any]:
+        """Route already-transcribed text through converse intent/fallback handling."""
+        converse_cfg = self.config.get("converse", {})
+        logging_cfg = self.config.get("logging", {})
+        log_text = text if bool(logging_cfg.get("log_transcripts", True)) else ""
+        intents = converse_cfg.get("intents", [])
+        discord_cfg = converse_cfg.get("discord", {})
+
+        intent_result = match_intent(text, intents)
+        if not intent_result.get("ok"):
+            log_event(
+                "converse",
+                "route_text",
+                text=log_text,
+                matched=False,
+                route="error",
+                error_code=intent_result.get("error_code"),
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+            return {
+                "turn_id": turn_id,
+                "stage": "intent",
+                "ok": False,
+                "error_code": intent_result.get("error_code"),
+                "text": text,
+                "intent_result": intent_result,
+            }
+
+        turn_info: dict[str, Any] = {
+            "turn_id": turn_id,
+            "text": text,
+            "matched": bool(intent_result.get("matched")),
+            "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
+        }
+
+        if intent_result.get("matched"):
+            action = str(intent_result.get("action"))
+            if action == "time.now":
+                turn_info.update({"route": "local", "action": action})
+                self._log_route_text(
+                    text=log_text,
+                    intent_result=intent_result,
+                    turn_info=turn_info,
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
+                now_text = dt.datetime.now().strftime("现在是 %H:%M")
+                speak_result = self._safe_speak(now_text, no_sound=no_sound)
+                turn_info.update({"speak": speak_result})
+            elif action == "remind.schedule":
+                slots = dict(intent_result.get("slots") or {})
+                turn_info.update({"route": "local", "action": action, "slots": slots})
+                self._log_route_text(
+                    text=log_text,
+                    intent_result=intent_result,
+                    turn_info=turn_info,
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
+                action_result = run_action(
+                    "remind",
+                    delay_sec=float(slots.get("delay_sec", 0)),
+                    text=str(slots.get("text") or "提醒"),
+                )
+                turn_info.update(
+                    {
+                        "action_result": action_result,
+                    }
+                )
+                if action_result.get("ok"):
+                    self._safe_speak("好，已设置提醒", no_sound=no_sound)
+            else:
+                turn_info.update({"route": "local", "action": action})
+                self._log_route_text(
+                    text=log_text,
+                    intent_result=intent_result,
+                    turn_info=turn_info,
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
+                self._ensure_local_intent_actions_registered()
+                action_result = run_action(action)
+                turn_info.update(
+                    {
+                        "action_result": action_result,
+                    }
+                )
+                if action_result.get("ok"):
+                    self._safe_speak(f"已执行 {action}", no_sound=no_sound)
+        elif allow_fallback:
+            turn_info.update({"route": "discord"})
+            self._log_route_text(
+                text=log_text,
+                intent_result=intent_result,
+                turn_info=turn_info,
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+            fallback_result = self._fallback_via_discord(
+                text,
+                discord_cfg=discord_cfg,
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+            turn_info.update({"route": "discord", "fallback": fallback_result})
+            if not fallback_result.get("ok", False):
+                turn_info.update(
+                    {
+                        "ok": False,
+                        "error_code": fallback_result.get(
+                            "error_code", ErrorCode.CONVERSE_DISCORD_SEND_FAILED
+                        ),
+                    }
+                )
+        else:
+            turn_info.update({"route": "ignored", "reason": "fallback_disabled"})
+            self._log_route_text(
+                text=log_text,
+                intent_result=intent_result,
+                turn_info=turn_info,
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+
+        return turn_info
+
+    def _log_route_text(
+        self,
+        *,
+        text: str,
+        intent_result: dict[str, Any],
+        turn_info: dict[str, Any],
+        session_id: str,
+        turn_id: int,
+    ) -> None:
+        log_event(
+            "converse",
+            "route_text",
+            text=text,
+            matched=bool(intent_result.get("matched")),
+            route=turn_info.get("route"),
+            action=turn_info.get("action"),
+            session_id=session_id,
+            turn_id=turn_id,
+        )
+
     def run(
         self,
         *,
@@ -107,8 +263,6 @@ class ConverseCapability(Capability):
         use_endpointing: bool = False,
     ) -> dict[str, Any]:
         converse_cfg = self.config.get("converse", {})
-        intents = converse_cfg.get("intents", [])
-        discord_cfg = converse_cfg.get("discord", {})
         wakeword_cfg = converse_cfg.get("wakeword", {})
 
         session_id = uuid.uuid4().hex[:12]
@@ -160,71 +314,35 @@ class ConverseCapability(Capability):
                 turns.append({"turn_id": turn_id, "stage": "listen", "ok": True, "empty": True})
                 break
 
-            intent_result = match_intent(text, intents)
-            if not intent_result.get("ok"):
-                turns.append(
-                    {
-                        "turn_id": turn_id,
-                        "stage": "intent",
-                        "ok": False,
-                        "error_code": intent_result.get("error_code"),
-                        "text": text,
-                    }
+            turn_info = self.route_text(
+                text,
+                session_id=session_id,
+                turn_id=turn_id,
+                no_sound=no_sound,
+            )
+            if not turn_info.get("ok", True):
+                turns.append({k: v for k, v in turn_info.items() if k != "intent_result"})
+                intent_result = turn_info.get("intent_result")
+                if isinstance(intent_result, dict):
+                    return dict(intent_result)
+                fallback_result = turn_info.get("fallback")
+                if isinstance(fallback_result, dict):
+                    return error(
+                        "converse_discord_send_failed",
+                        str(fallback_result.get("message") or "Discord fallback failed"),
+                        error_code=fallback_result.get(
+                            "error_code", ErrorCode.CONVERSE_DISCORD_SEND_FAILED
+                        ),
+                        turns=turns,
+                    )
+                return error(
+                    "converse_failed",
+                    "Converse turn failed",
+                    error_code=turn_info.get("error_code"),
+                    turns=turns,
                 )
-                return intent_result
-
-            turn_info: dict[str, Any] = {
-                "turn_id": turn_id,
-                "text": text,
-                "matched": bool(intent_result.get("matched")),
-                "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
-            }
             if "endpoint_metrics" in listen_result:
                 turn_info["endpoint_metrics"] = listen_result["endpoint_metrics"]
-
-            if intent_result.get("matched"):
-                action = str(intent_result.get("action"))
-                if action == "time.now":
-                    now_text = dt.datetime.now().strftime("现在是 %H:%M")
-                    speak_result = self._safe_speak(now_text, no_sound=no_sound)
-                    turn_info.update({"route": "local", "action": action, "speak": speak_result})
-                elif action == "remind.schedule":
-                    slots = dict(intent_result.get("slots") or {})
-                    action_result = run_action(
-                        "remind",
-                        delay_sec=float(slots.get("delay_sec", 0)),
-                        text=str(slots.get("text") or "提醒"),
-                    )
-                    turn_info.update(
-                        {
-                            "route": "local",
-                            "action": action,
-                            "slots": slots,
-                            "action_result": action_result,
-                        }
-                    )
-                    if action_result.get("ok"):
-                        self._safe_speak("好，已设置提醒", no_sound=no_sound)
-                else:
-                    self._ensure_local_intent_actions_registered()
-                    action_result = run_action(action)
-                    turn_info.update(
-                        {
-                            "route": "local",
-                            "action": action,
-                            "action_result": action_result,
-                        }
-                    )
-                    if action_result.get("ok"):
-                        self._safe_speak(f"已执行 {action}", no_sound=no_sound)
-            else:
-                fallback_result = self._fallback_via_discord(
-                    text,
-                    discord_cfg=discord_cfg,
-                    session_id=session_id,
-                    turn_id=turn_id,
-                )
-                turn_info.update({"route": "discord", "fallback": fallback_result})
 
             turns.append(turn_info)
 
