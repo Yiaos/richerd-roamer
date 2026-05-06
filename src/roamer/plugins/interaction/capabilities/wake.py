@@ -217,7 +217,7 @@ class WakeCapability(Capability):
                         session_id=session_id,
                         turn_id=self._turn_id,
                         no_sound=no_sound,
-                        allow_fallback=bool(match.matched),
+                        allow_fallback=bool(match.matched or in_followup),
                     )
                     log_event(
                         "wake",

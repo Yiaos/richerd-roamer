@@ -291,7 +291,7 @@ def test_wake_once_waits_for_followup_command_after_wake_phrase_only() -> None:
     assert cap._listen_once.call_count == 2
     cap._route_text.assert_called_once()
     assert cap._route_text.call_args.kwargs["text"] == "现在几点了"
-    assert cap._route_text.call_args.kwargs["allow_fallback"] is False
+    assert cap._route_text.call_args.kwargs["allow_fallback"] is True
 
 
 def test_wake_treats_repeated_wake_phrase_as_wake_only() -> None:
@@ -312,10 +312,10 @@ def test_wake_treats_repeated_wake_phrase_as_wake_only() -> None:
     assert result["ok"] is True
     cap._route_text.assert_called_once()
     assert cap._route_text.call_args.kwargs["text"] == "现在几点了"
-    assert cap._route_text.call_args.kwargs["allow_fallback"] is False
+    assert cap._route_text.call_args.kwargs["allow_fallback"] is True
 
 
-def test_wake_followup_unmatched_text_does_not_refresh_followup() -> None:
+def test_wake_followup_unmatched_text_allows_discord_fallback() -> None:
     now = [100.0]
     config = _config()
     config["converse"]["wakeword"]["min_interval_sec"] = 0
@@ -328,15 +328,14 @@ def test_wake_followup_unmatched_text_does_not_refresh_followup() -> None:
             {"ok": True, "text": "嗯"},
         ]
     )
-    cap._route_text = Mock(return_value={"turn_id": 1, "route": "ignored"})
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "discord"})
 
     result = cap.run(once=True, timeout=1.0, no_sound=True)
 
     assert result["ok"] is True
     cap._route_text.assert_called_once()
     assert cap._route_text.call_args.kwargs["text"] == "嗯"
-    assert cap._route_text.call_args.kwargs["allow_fallback"] is False
-    assert cap._followup_until == 110.0
+    assert cap._route_text.call_args.kwargs["allow_fallback"] is True
 
 
 def test_wake_once_propagates_route_text_failure() -> None:
