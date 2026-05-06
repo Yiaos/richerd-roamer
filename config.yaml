@@ -106,7 +106,7 @@ converse:
     pull: down
     debounce_ms: 300
     min_interval_sec: 1.5
-    pre_roll_sec: 0.8
+    pre_roll_sec: 1.0
     ignore_while_speaking: true
     prompt_sound: false
     phrases:

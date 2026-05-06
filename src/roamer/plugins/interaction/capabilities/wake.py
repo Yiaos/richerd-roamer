@@ -500,7 +500,7 @@ class WakeCapability(Capability):
         listener = ListenCapability(self.config)
         endpoint_config = EndpointConfig.from_config(self.config)
         wake_cfg = self.config.get("converse", {}).get("wakeword", {})
-        pre_roll_sec = float(wake_cfg.get("pre_roll_sec", 0.8))
+        pre_roll_sec = float(wake_cfg.get("pre_roll_sec", 1.0))
         source = PreRollAudioSource(
             chunk_source=listener._audio.stream_chunks(
                 chunk_duration_sec=endpoint_config.chunk_duration_sec,

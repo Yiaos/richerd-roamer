@@ -104,7 +104,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "pull": "down",
             "debounce_ms": 300,
             "min_interval_sec": 1.5,
-            "pre_roll_sec": 0.8,
+            "pre_roll_sec": 1.0,
             "ignore_while_speaking": True,
             "prompt_sound": False,
             "phrases": ["richard", "rich erd", "瑞彻德"],
