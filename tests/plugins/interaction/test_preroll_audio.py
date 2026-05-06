@@ -28,6 +28,26 @@ def test_capture_iter_yields_snapshot_then_live_chunks() -> None:
     assert list(source.capture_iter(max_duration_sec=1.0)) == [b"a", b"b", b"c", b"d"]
 
 
+def test_capture_iter_waits_for_delayed_live_chunks() -> None:
+    def delayed_chunks():
+        yield b"a"
+        time.sleep(0.15)
+        yield b"b"
+
+    source = PreRollAudioSource(
+        chunk_source=delayed_chunks(),
+        chunk_duration_sec=0.01,
+        pre_roll_sec=0.1,
+    )
+    source.start()
+    try:
+        chunks = list(source.capture_iter(max_duration_sec=0.5))
+    finally:
+        source.stop()
+
+    assert chunks == [b"a", b"b"]
+
+
 def test_clear_removes_buffered_and_live_chunks() -> None:
     source = PreRollAudioSource(
         chunk_source=iter([b"a", b"b"]),

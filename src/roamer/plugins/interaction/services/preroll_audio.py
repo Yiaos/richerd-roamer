@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import time
 from collections import deque
 from collections.abc import Iterable, Iterator
 
@@ -88,9 +89,13 @@ class PreRollAudioSource:
         for chunk in snapshot:
             yield chunk
         yielded = 0
-        while yielded < max_chunks:
+        deadline = time.monotonic() + float(max_duration_sec)
+        while yielded < max_chunks and time.monotonic() < deadline:
             try:
-                chunk = self._next_live_chunk()
+                wait_timeout = min(0.25, max(0.0, deadline - time.monotonic()))
+                chunk = self._next_live_chunk(timeout=wait_timeout)
+            except TimeoutError:
+                continue
             except StopIteration:
                 return
             self._buffer.append(chunk)
@@ -107,12 +112,15 @@ class PreRollAudioSource:
         finally:
             self._running = False
 
-    def _next_live_chunk(self) -> bytes:
+    def _next_live_chunk(self, timeout: float | None = None) -> bytes:
         if self._thread is None:
             return next(self._chunk_iter)
+        wait_sec = timeout if timeout is not None else max(0.25, self._chunk_duration_sec * 4)
         try:
-            return self._live_chunks.get(timeout=self._chunk_duration_sec * 2)
+            return self._live_chunks.get(timeout=wait_sec)
         except queue.Empty as exc:
+            if self.running:
+                raise TimeoutError from exc
             raise StopIteration from exc
 
     def _put_live_chunk(self, chunk: bytes) -> None:
