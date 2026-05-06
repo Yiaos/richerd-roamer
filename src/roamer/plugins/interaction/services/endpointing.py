@@ -163,6 +163,7 @@ class EndpointRecorder:
         log_event(
             "endpoint",
             "record_start",
+            level="DEBUG",
             max_record_sec=cfg.max_record_sec,
             silence_sec=cfg.silence_sec,
             min_speech_sec=cfg.min_speech_sec,
@@ -192,6 +193,7 @@ class EndpointRecorder:
                     log_event(
                         "endpoint",
                         "speech_start",
+                        level="DEBUG",
                         total_chunks=total_chunks,
                         speech_chunks=speech_chunks,
                         probability=round(prob, 6),
@@ -240,6 +242,7 @@ class EndpointRecorder:
                     log_event(
                         "endpoint",
                         "endpoint_reached",
+                        level="DEBUG",
                         total_chunks=total_chunks,
                         speech_chunks=speech_chunks,
                         silence_after_speech=silence_after_speech,
@@ -288,6 +291,7 @@ class EndpointRecorder:
         log_event(
             "endpoint",
             "record_done",
+            level="DEBUG",
             ok=True,
             total_chunks=total_chunks,
             speech_chunks=speech_chunks,

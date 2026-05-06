@@ -193,6 +193,7 @@ def test_endpoint_logs_record_timeline(monkeypatch, tmp_path: Path) -> None:
         "endpoint_reached",
         "record_done",
     ]
+    assert all(fields["level"] == "DEBUG" for _component, _event, fields in events)
     assert events[0][2]["max_record_sec"] == 2.0
     assert events[1][2]["total_chunks"] == 2
     assert events[2][2]["endpoint_latency_sec"] == 0.2

@@ -143,6 +143,7 @@ class WakeCapability(Capability):
                     log_event(
                         "wake",
                         "listen_start",
+                        level="DEBUG",
                         session_id=session_id,
                         timeout_sec=record_timeout,
                         in_followup=in_followup_wait,
@@ -154,6 +155,7 @@ class WakeCapability(Capability):
                     log_event(
                         "wake",
                         "listen_done",
+                        level="DEBUG" if bool(listen_result.get("ok", False)) else "INFO",
                         session_id=session_id,
                         ok=bool(listen_result.get("ok", False)),
                         error_code=listen_result.get("error_code"),

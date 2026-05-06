@@ -49,7 +49,8 @@ def test_wake_logs_transcript_and_match(monkeypatch) -> None:
     assert result["ok"] is True
     assert _event(events, "trigger_wait_start")[0] == "wake"
     assert _event(events, "trigger_hit")[0] == "wake"
-    assert _event(events, "listen_start")[0] == "wake"
+    assert _event(events, "listen_start")[2]["level"] == "DEBUG"
+    assert _event(events, "listen_done")[2]["level"] == "DEBUG"
     assert _event(events, "listen_done")[2]["ok"] is True
     asr_event = _event(events, "asr_transcript")
     assert ("wake", "asr_transcript") == asr_event[:2]
