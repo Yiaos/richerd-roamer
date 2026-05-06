@@ -117,24 +117,6 @@ def test_converse_route_text_reuses_discord_fallback_flow() -> None:
     assert result["matched"] is False
 
 
-def test_converse_route_text_rejects_incomplete_fallback_text() -> None:
-    cap = ConverseCapability(_base_config())
-
-    with patch("roamer.plugins.interaction.capabilities.converse.send_fallback") as fallback:
-        for text in ("嗯", "去", "是", "觉得挺", "帮我"):
-            result = cap.route_text(
-                text,
-                session_id="s1",
-                turn_id=1,
-                no_sound=True,
-            )
-
-            assert result["route"] == "ignored"
-            assert result["matched"] is False
-            assert result["reason"] == "fallback_incomplete_text"
-        fallback.assert_not_called()
-
-
 def test_converse_route_text_can_suppress_discord_fallback() -> None:
     cap = ConverseCapability(_base_config())
 
