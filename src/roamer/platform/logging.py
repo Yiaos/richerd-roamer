@@ -109,7 +109,7 @@ def setup_logging(config: dict[str, Any]) -> None:
         return
 
     try:
-        log_dir = Path(str(logging_cfg.get("dir", "/var/log/roamer"))).expanduser()
+        log_dir = Path(str(logging_cfg.get("dir", "logs"))).expanduser()
         retention_days = int(logging_cfg.get("retention_days", 3))
         log_dir.mkdir(parents=True, exist_ok=True)
         _cleanup_old_logs(log_dir, retention_days=retention_days)

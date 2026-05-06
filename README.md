@@ -180,7 +180,7 @@ Roamer's production install on the Pi is expected to run from:
 - CLI symlink: `/usr/local/bin/roamer`
 - runtime env: `/home/richerd/.config/roamer/env`
 - systemd env: `/etc/roamer/roamer.env`
-- runtime log: `/var/log/roamer/roamer.log`
+- runtime log: `logs/roamer.log`
 - daemon: `roamer-serve.service`
 - hands-free wake: `roamer-wake.service`
 
@@ -214,6 +214,31 @@ Hardware wiring diagram:
 `SU-03T 3V3` is the module's regulated 3.3V output, not the normal supply input
 for this setup. Confirm the OUT pin is 3.3V logic before connecting it to GPIO17.
 
+Streaming STT backend:
+
+Roamer can use a LAN vLLM Qwen ASR backend for realtime STT while keeping
+Silero as the local endpointing/turn-boundary layer. The configured backend is:
+
+```yaml
+converse:
+  stt:
+    mode: realtime_with_batch_fallback
+    provider: vllm_realtime
+    url: "ws://hurricane.tail33ee82.ts.net:8302/v1/realtime"
+    model: "qwen3-asr-0.6b"
+    fallback: batch
+```
+
+Before enabling hands-free tests, verify the backend from the Pi:
+
+```bash
+curl http://hurricane.tail33ee82.ts.net:8302/v1/models
+```
+
+The vLLM service must expose the model id `qwen3-asr-0.6b`. If the realtime
+provider fails or times out, Roamer falls back to the existing FunASR batch path
+when `fallback: batch` is configured.
+
 Create the runtime secret file before installing. Do not commit this file.
 
 ```bash
@@ -239,7 +264,7 @@ The installer fails fast if required files or values are missing. It:
 - creates or reuses `/home/richerd/.venv/roamer`
 - installs Roamer with speech and GPIO dependencies
 - points `/usr/local/bin/roamer` at the virtualenv entrypoint
-- creates `/var/log/roamer` for structured runtime logs
+- creates `logs` for structured runtime logs
 - runs proxy discovery and keeps proxy values in `~/.config/roamer/env`
 - writes `/etc/roamer/roamer.env` for systemd without exposing secrets in git
 - installs drop-ins so `roamer-serve.service` runs as `richerd`, loads the env file, and can reach the user's PulseAudio session
@@ -259,8 +284,8 @@ roamer converse --no-wakeword --no-sound --timeout 2 --max-turns 1
 Runtime logs:
 
 ```bash
-tail -f /var/log/roamer/roamer.log
-find /var/log/roamer -maxdepth 1 -type f -name 'roamer.log*' -ls
+tail -f logs/roamer.log
+find logs -maxdepth 1 -type f -name 'roamer.log*' -ls
 ```
 
 Roamer writes JSONL runtime events for `serve`, `wake`, `listen`, `converse`, and

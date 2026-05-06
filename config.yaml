@@ -62,7 +62,7 @@ serve:
 logging:
   enabled: true
   level: INFO
-  dir: /var/log/roamer
+  dir: logs
   max_bytes: 10485760
   backup_count: 10
   retention_days: 3
@@ -106,14 +106,15 @@ converse:
     pull: down
     debounce_ms: 300
     min_interval_sec: 1.5
-    pre_roll_sec: 0.8
+    pre_roll_sec: 1.0
     ignore_while_speaking: true
     prompt_sound: false
     phrases:
       - richard
       - rich erd
       - 瑞彻德
-    followup_timeout_sec: 10.0
+      - 理查德
+    followup_timeout_sec: 3.0
 
   # Minimal v1 intent whitelist seed
   intents:
@@ -135,14 +136,23 @@ converse:
 
   endpoint:
     mode: vad_endpoint
-    silence_sec: 2.0
+    silence_sec: 1.5
     min_speech_sec: 0.2
     max_record_sec: 10.0
     pre_speech_padding_sec: 0.3
 
+  stt:
+    mode: realtime_with_batch_fallback
+    provider: vllm_realtime
+    url: "ws://hurricane.tail33ee82.ts.net:8302/v1/realtime"
+    model: "qwen3-asr-0.6b"
+    chunk_duration_sec: 0.1
+    response_timeout_sec: 20.0
+    fallback: batch
+
   discord:
     enabled: true
-    channel_id: "1478341934324908084"
+    channel_id: "1477688845872005281"
     token_env: DISCORD_BOT_TOKEN
     source: roamer
     mention_user_id: "1477701379437891695"

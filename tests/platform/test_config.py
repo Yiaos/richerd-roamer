@@ -95,12 +95,15 @@ def test_default_config_includes_serve_and_endpoint_defaults(tmp_path, monkeypat
     assert config["serve"]["enabled"] is True
     assert config["serve"]["fallback_to_cli"] is True
     assert "prewarm" not in config["serve"]
-    assert config["logging"]["dir"] == "/var/log/roamer"
+    assert config["logging"]["dir"] == "logs"
     assert config["logging"]["retention_days"] == 3
     assert config["logging"]["log_transcripts"] is True
     assert config["logging"]["log_audio_paths"] is False
     assert config["converse"]["endpoint"]["mode"] == "vad_endpoint"
-    assert config["converse"]["endpoint"]["silence_sec"] == 2.0
+    assert config["converse"]["endpoint"]["silence_sec"] == 1.5
+    assert config["converse"]["stt"]["mode"] == "batch"
+    assert config["converse"]["stt"]["provider"] == "vllm_realtime"
+    assert config["converse"]["stt"]["model"] == "qwen3-asr-0.6b"
 
 
 def test_default_su03t_wakeword_config() -> None:
@@ -110,6 +113,8 @@ def test_default_su03t_wakeword_config() -> None:
     assert wakeword["driver"] == "su03t_gpio"
     assert wakeword["gpio_line"] == 17
     assert wakeword["edge"] == "rising"
-    assert wakeword["phrases"] == ["richard", "rich erd", "瑞彻德"]
+    assert wakeword["pre_roll_sec"] == 1.0
+    assert wakeword["followup_timeout_sec"] == 3.0
+    assert wakeword["phrases"] == ["richard", "rich erd", "瑞彻德", "理查德"]
     assert wakeword["prompt_sound"] is False
     assert DEFAULT_CONFIG["converse"]["endpoint"]["mode"] == "vad_endpoint"

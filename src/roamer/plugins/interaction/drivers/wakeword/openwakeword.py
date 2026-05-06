@@ -25,12 +25,12 @@ class OpenWakewordDriver(WakewordDriver):
     def stop(self) -> None:
         self._running = False
 
-    def wait_hit(self, timeout: float) -> bool:
+    def wait_hit(self, timeout: float | None) -> bool:
         if not self._running:
             return False
         if bool(self.config.get("mock_hit", False)):
             return True
-        sleep_for = max(0.0, min(float(timeout), 0.1))
+        sleep_for = 0.1 if timeout is None else max(0.0, min(float(timeout), 0.1))
         time.sleep(sleep_for)
         return False
 

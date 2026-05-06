@@ -129,12 +129,14 @@ class EndpointRecorder:
         vad_probability: Callable[[np.ndarray, int], float],
         config: EndpointConfig,
         output_path: str,
+        chunk_sink: Callable[[bytes], None] | None = None,
         clock: Callable[[], float] | None = None,
     ):
         self._chunk_source = chunk_source
         self._vad_probability = vad_probability
         self._config = config
         self._output_path = output_path
+        self._chunk_sink = chunk_sink
         self._clock = clock or time.monotonic
 
     def record(self) -> dict[str, Any]:
@@ -161,6 +163,7 @@ class EndpointRecorder:
         log_event(
             "endpoint",
             "record_start",
+            level="DEBUG",
             max_record_sec=cfg.max_record_sec,
             silence_sec=cfg.silence_sec,
             min_speech_sec=cfg.min_speech_sec,
@@ -181,12 +184,16 @@ class EndpointRecorder:
                 if is_speech:
                     speech_started = True
                     recorded.extend(prefix)
+                    for prefix_chunk in prefix:
+                        self._emit_chunk(prefix_chunk)
                     recorded.append(raw_chunk)
+                    self._emit_chunk(raw_chunk)
                     speech_chunks += 1
                     silence_after_speech = 0
                     log_event(
                         "endpoint",
                         "speech_start",
+                        level="DEBUG",
                         total_chunks=total_chunks,
                         speech_chunks=speech_chunks,
                         probability=round(prob, 6),
@@ -220,6 +227,7 @@ class EndpointRecorder:
                         )
             else:
                 recorded.append(raw_chunk)
+                self._emit_chunk(raw_chunk)
                 if is_speech:
                     speech_chunks += 1
                     silence_after_speech = 0
@@ -234,6 +242,7 @@ class EndpointRecorder:
                     log_event(
                         "endpoint",
                         "endpoint_reached",
+                        level="DEBUG",
                         total_chunks=total_chunks,
                         speech_chunks=speech_chunks,
                         silence_after_speech=silence_after_speech,
@@ -282,6 +291,7 @@ class EndpointRecorder:
         log_event(
             "endpoint",
             "record_done",
+            level="DEBUG",
             ok=True,
             total_chunks=total_chunks,
             speech_chunks=speech_chunks,
@@ -323,3 +333,7 @@ class EndpointRecorder:
             wf.setsampwidth(int(self._config.sample_width_bytes))
             wf.setframerate(int(self._config.sample_rate))
             wf.writeframes(b"".join(chunks))
+
+    def _emit_chunk(self, chunk: bytes) -> None:
+        if self._chunk_sink is not None:
+            self._chunk_sink(chunk)

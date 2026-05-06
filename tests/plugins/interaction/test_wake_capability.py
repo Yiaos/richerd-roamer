@@ -1,6 +1,6 @@
 """Tests for SU-03T wake capability."""
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from roamer.platform.contract import ErrorCode
 from roamer.platform.logging import current_request_id
@@ -80,6 +80,45 @@ def test_wake_service_mode_keeps_polling_after_empty_timeout() -> None:
     assert cap._wait_for_trigger.call_count == 2
 
 
+def test_wake_service_mode_waits_for_gpio_without_timeout() -> None:
+    cap = WakeCapability(_config())
+    timeouts = []
+
+    def _wait_for_trigger(timeout):
+        timeouts.append(timeout)
+        return True
+
+    cap._wait_for_trigger = Mock(side_effect=_wait_for_trigger)
+    cap._listen_once = Mock(return_value={"ok": True, "text": "Richard 现在几点了"})
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "local"})
+
+    result = cap.run(once=True, timeout=None, no_sound=True)
+
+    assert result["ok"] is True
+    assert timeouts == [None]
+
+
+def test_wake_forwards_none_timeout_to_gpio_driver_for_blocking_wait() -> None:
+    cap = WakeCapability(_config())
+    timeouts = []
+
+    class _Driver:
+        def start(self):
+            return None
+
+        def stop(self):
+            return None
+
+        def wait_hit(self, timeout):
+            timeouts.append(timeout)
+            return True
+
+    with patch("roamer.plugins.interaction.capabilities.wake.get_driver", return_value=_Driver()):
+        assert cap._wait_for_trigger(timeout=None) is True
+
+    assert timeouts == [None]
+
+
 def test_wake_throttles_repeated_triggers_at_capability_level() -> None:
     now = [100.0]
     cap = WakeCapability(_config(), clock=lambda: now[0])
@@ -140,6 +179,52 @@ def test_wake_preroll_recording_uses_endpoint_window_after_trigger() -> None:
 
     assert result["ok"] is True
     assert cap._listen_once.call_args.kwargs["timeout"] is None
+
+
+def test_wake_preroll_uses_realtime_transcriber_when_configured() -> None:
+    config = _config()
+    config["converse"]["stt"] = {
+        "mode": "realtime_with_batch_fallback",
+        "provider": "vllm_realtime",
+        "url": "ws://example.test/v1/realtime",
+        "model": "qwen3-asr-0.6b",
+        "response_timeout_sec": 7.0,
+    }
+    config["alsa"] = {"sample_rate": 16000, "channels": 2}
+    config["silero"] = {"threshold": 0.5}
+    pre_roll = Mock()
+    pre_roll.capture_iter.return_value = iter([b"\x00\x00"])
+    provider = Mock()
+    transcriber = Mock()
+    transcriber.transcribe.return_value = {"ok": True, "text": "Richard 现在几点了"}
+    listener = Mock()
+    listener._vad = Mock()
+
+    cap = WakeCapability(config)
+    with patch(
+        "roamer.plugins.interaction.capabilities.wake.ListenCapability",
+        return_value=listener,
+    ):
+        with patch(
+            "roamer.plugins.interaction.capabilities.wake.VllmRealtimeSTTProvider",
+            return_value=provider,
+        ) as provider_cls:
+            with patch(
+                "roamer.plugins.interaction.capabilities.wake.RealtimeEndpointTranscriber",
+                return_value=transcriber,
+            ) as transcriber_cls:
+                result = cap._listen_once_with_preroll(
+                    timeout=3.0,
+                    pre_roll_source=pre_roll,
+                )
+
+    assert result["ok"] is True
+    assert result["text"] == "Richard 现在几点了"
+    provider_cls.assert_called_once()
+    transcriber_cls.assert_called_once()
+    assert transcriber_cls.call_args.kwargs["provider"] is provider
+    assert transcriber_cls.call_args.kwargs["response_timeout_sec"] == 7.0
+    assert callable(transcriber_cls.call_args.kwargs["fallback_transcribe"])
 
 
 def test_wake_restarts_dead_preroll_source_before_recording() -> None:
@@ -206,7 +291,7 @@ def test_wake_once_waits_for_followup_command_after_wake_phrase_only() -> None:
     assert cap._listen_once.call_count == 2
     cap._route_text.assert_called_once()
     assert cap._route_text.call_args.kwargs["text"] == "现在几点了"
-    assert cap._route_text.call_args.kwargs["allow_fallback"] is False
+    assert cap._route_text.call_args.kwargs["allow_fallback"] is True
 
 
 def test_wake_treats_repeated_wake_phrase_as_wake_only() -> None:
@@ -227,10 +312,10 @@ def test_wake_treats_repeated_wake_phrase_as_wake_only() -> None:
     assert result["ok"] is True
     cap._route_text.assert_called_once()
     assert cap._route_text.call_args.kwargs["text"] == "现在几点了"
-    assert cap._route_text.call_args.kwargs["allow_fallback"] is False
+    assert cap._route_text.call_args.kwargs["allow_fallback"] is True
 
 
-def test_wake_followup_unmatched_text_does_not_refresh_followup() -> None:
+def test_wake_followup_unmatched_text_allows_discord_fallback() -> None:
     now = [100.0]
     config = _config()
     config["converse"]["wakeword"]["min_interval_sec"] = 0
@@ -240,18 +325,60 @@ def test_wake_followup_unmatched_text_does_not_refresh_followup() -> None:
     cap._listen_once = Mock(
         side_effect=[
             {"ok": True, "text": "Richard"},
-            {"ok": True, "text": "嗯"},
+            {"ok": True, "text": "查天气"},
         ]
     )
-    cap._route_text = Mock(return_value={"turn_id": 1, "route": "ignored"})
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "discord"})
 
     result = cap.run(once=True, timeout=1.0, no_sound=True)
 
     assert result["ok"] is True
     cap._route_text.assert_called_once()
-    assert cap._route_text.call_args.kwargs["text"] == "嗯"
-    assert cap._route_text.call_args.kwargs["allow_fallback"] is False
-    assert cap._followup_until == 110.0
+    assert cap._route_text.call_args.kwargs["text"] == "查天气"
+    assert cap._route_text.call_args.kwargs["allow_fallback"] is True
+
+
+def test_wake_ignores_single_character_asr_text_in_followup() -> None:
+    for short_text in ["嗯。", "嗯！", "啊。"]:
+        config = _config()
+        config["converse"]["wakeword"]["min_interval_sec"] = 0
+        cap = WakeCapability(config)
+        cap._wait_for_trigger = Mock(return_value=True)
+        cap._listen_once = Mock(
+            side_effect=[
+                {"ok": True, "text": "Richard"},
+                {"ok": True, "text": short_text},
+                {"ok": True, "text": "帮我查一下明天的天气"},
+            ]
+        )
+        cap._route_text = Mock(return_value={"turn_id": 1, "route": "discord"})
+
+        result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+        assert result["ok"] is True
+        assert cap._route_text.call_count == 1
+        assert cap._route_text.call_args.kwargs["text"] == "帮我查一下明天的天气"
+        assert cap._route_text.call_args.kwargs["allow_fallback"] is True
+
+
+def test_wake_ignores_single_character_command_after_wake_phrase() -> None:
+    config = _config()
+    config["converse"]["wakeword"]["min_interval_sec"] = 0
+    cap = WakeCapability(config)
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._listen_once = Mock(
+        side_effect=[
+            {"ok": True, "text": "Richard 嗯"},
+            {"ok": True, "text": "Richard 帮我查天气"},
+        ]
+    )
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "discord"})
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    assert cap._route_text.call_count == 1
+    assert cap._route_text.call_args.kwargs["text"] == "帮我查天气"
 
 
 def test_wake_once_propagates_route_text_failure() -> None:

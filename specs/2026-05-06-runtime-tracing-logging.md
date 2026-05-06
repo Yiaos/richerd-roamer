@@ -12,7 +12,7 @@ perception, Bluetooth, and reminder actions.
 The primary debugging workflow should be:
 
 ```bash
-grep '"request_id":"<id>"' /var/log/roamer/roamer.log
+grep '"request_id":"<id>"' logs/roamer.log
 ```
 
 That output should show the ordered timeline for a single user request, including timing
@@ -527,7 +527,7 @@ After deploy:
 
 ```bash
 sudo systemctl restart roamer-serve.service roamer-wake.service
-tail -f /var/log/roamer/roamer.log
+tail -f logs/roamer.log
 ```
 
 Manual tests:

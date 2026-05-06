@@ -31,7 +31,7 @@ class Su03tGpioDriver(WakewordDriver):
                 release()
         self._request = None
 
-    def wait_hit(self, timeout: float) -> bool:
+    def wait_hit(self, timeout: float | None) -> bool:
         if self._request is None:
             return False
 

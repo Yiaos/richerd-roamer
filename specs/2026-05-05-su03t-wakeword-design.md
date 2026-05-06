@@ -122,18 +122,19 @@ converse:
     pull: down
     debounce_ms: 300
     min_interval_sec: 1.5
-    pre_roll_sec: 0.8
+    pre_roll_sec: 1.0
     ignore_while_speaking: true
     prompt_sound: false
     phrases:
       - richard
       - rich erd
       - 瑞彻德
-    followup_timeout_sec: 10.0
+      - 理查德
+    followup_timeout_sec: 3.0
 
   endpoint:
     mode: vad_endpoint
-    silence_sec: 1.0
+    silence_sec: 1.5
     min_speech_sec: 0.2
     max_record_sec: 8.0
     pre_speech_padding_sec: 0.3
