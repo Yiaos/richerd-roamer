@@ -68,7 +68,7 @@ class ConverseCapability(Capability):
     ) -> dict[str, Any]:
         return send_fallback(
             text,
-            config={"discord": discord_cfg},
+            config={"discord": discord_cfg, "logging": self.config.get("logging", {})},
             session_id=session_id,
             turn_id=turn_id,
             timeout_sec=3.0,

@@ -104,7 +104,12 @@ def test_converse_route_text_reuses_discord_fallback_flow() -> None:
 
     with patch(
         "roamer.plugins.interaction.capabilities.converse.send_fallback",
-        return_value={"ok": True, "sent": False, "skipped": True},
+        side_effect=lambda text, *, config, session_id, turn_id, timeout_sec: {
+            "ok": True,
+            "sent": False,
+            "skipped": True,
+            "logging": config.get("logging"),
+        },
     ):
         result = cap.route_text(
             "讲个笑话",
@@ -115,6 +120,7 @@ def test_converse_route_text_reuses_discord_fallback_flow() -> None:
 
     assert result["route"] == "discord"
     assert result["matched"] is False
+    assert result["fallback"]["logging"] == {}
 
 
 def test_converse_route_text_propagates_discord_fallback_failure() -> None:

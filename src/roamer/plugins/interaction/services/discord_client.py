@@ -10,6 +10,7 @@ from urllib import error as url_error
 from urllib import request
 
 from roamer.platform.contract import ErrorCode
+from roamer.platform.logging import log_event
 from roamer.platform.output import error, success
 
 
@@ -42,8 +43,20 @@ def send_fallback(
 ) -> dict[str, Any]:
     """Send fallback text to Discord channel using Bot REST API."""
     discord_cfg = (config or {}).get("discord", {})
+    logging_cfg = (config or {}).get("logging", {})
     if not bool(discord_cfg.get("enabled", False)):
-        return success(sent=False, skipped=True, reason="discord_disabled")
+        result = success(sent=False, skipped=True, reason="discord_disabled")
+        log_event(
+            "discord",
+            "send_result",
+            ok=True,
+            sent=False,
+            skipped=True,
+            reason="discord_disabled",
+            session_id=session_id,
+            turn_id=turn_id,
+        )
+        return result
 
     channel_id = str(discord_cfg.get("channel_id") or "").strip()
     token_env = str(discord_cfg.get("token_env") or "DISCORD_BOT_TOKEN")
@@ -51,13 +64,28 @@ def send_fallback(
     source = str(discord_cfg.get("source") or "roamer")
 
     if not channel_id or not token:
-        return error(
+        result = error(
             "converse_discord_send_failed",
             "Discord fallback missing channel_id or token",
             error_code=ErrorCode.CONVERSE_DISCORD_SEND_FAILED,
             sent=False,
             skipped=True,
         )
+        log_event(
+            "discord",
+            "send_result",
+            ok=False,
+            sent=False,
+            skipped=True,
+            error_code=result.get("error_code"),
+            reason="missing_channel_or_token",
+            channel_configured=bool(channel_id),
+            token_env=token_env,
+            token_configured=bool(token),
+            session_id=session_id,
+            turn_id=turn_id,
+        )
+        return result
 
     payload = {
         "source": source,
@@ -71,8 +99,21 @@ def send_fallback(
         discord_cfg.get("reply_instruction")
         or "通过 roamer control node 语音播报回复"
     )
-    content = _mention_prefix(discord_cfg) + str(text).strip() + "\n" + instruction
+    mention_prefix = _mention_prefix(discord_cfg)
+    content = mention_prefix + str(text).strip() + "\n" + instruction
     body = {"content": content}
+    log_transcripts = bool(logging_cfg.get("log_transcripts", True))
+    log_event(
+        "discord",
+        "send_request",
+        channel_id=channel_id,
+        session_id=session_id,
+        turn_id=turn_id,
+        content=content if log_transcripts else "",
+        content_length=len(content),
+        mention_configured=bool(mention_prefix),
+        timeout_sec=timeout_sec,
+    )
 
     req = request.Request(
         url=f"https://discord.com/api/v10/channels/{channel_id}/messages",
@@ -89,26 +130,70 @@ def send_fallback(
         with request.urlopen(req, timeout=timeout_sec) as resp:
             status = getattr(resp, "status", 200)
             if 200 <= status < 300:
-                return success(sent=True, status=status, payload=payload, content=content)
-            return error(
+                result = success(sent=True, status=status, payload=payload, content=content)
+                log_event(
+                    "discord",
+                    "send_result",
+                    ok=True,
+                    sent=True,
+                    status=status,
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
+                return result
+            result = error(
                 "converse_discord_send_failed",
                 f"Discord returned unexpected status: {status}",
                 error_code=ErrorCode.CONVERSE_DISCORD_SEND_FAILED,
                 sent=False,
                 status=status,
             )
+            log_event(
+                "discord",
+                "send_result",
+                ok=False,
+                sent=False,
+                status=status,
+                error_code=result.get("error_code"),
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+            return result
     except url_error.HTTPError as exc:
-        return error(
+        result = error(
             "converse_discord_send_failed",
             f"Discord HTTP error: {exc.code}",
             error_code=ErrorCode.CONVERSE_DISCORD_SEND_FAILED,
             sent=False,
             status=exc.code,
         )
+        log_event(
+            "discord",
+            "send_result",
+            ok=False,
+            sent=False,
+            status=exc.code,
+            error_code=result.get("error_code"),
+            session_id=session_id,
+            turn_id=turn_id,
+        )
+        return result
     except Exception as exc:
-        return error(
+        result = error(
             "converse_discord_send_failed",
             f"Discord send failed: {exc}",
             error_code=ErrorCode.CONVERSE_DISCORD_SEND_FAILED,
             sent=False,
         )
+        log_event(
+            "discord",
+            "send_result",
+            ok=False,
+            sent=False,
+            error_code=result.get("error_code"),
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+            session_id=session_id,
+            turn_id=turn_id,
+        )
+        return result

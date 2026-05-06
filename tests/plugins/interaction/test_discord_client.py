@@ -35,14 +35,21 @@ class _Resp:
 
 
 def test_send_fallback_success() -> None:
+    events = []
     with patch("os.getenv", return_value="token"):
         with patch("urllib.request.urlopen", return_value=_Resp()):
-            result = send_fallback(
-                "hello",
-                config=_cfg(),
-                session_id="s1",
-                turn_id=1,
-            )
+            with patch(
+                "roamer.plugins.interaction.services.discord_client.log_event",
+                side_effect=lambda component, event, **fields: events.append(
+                    (component, event, fields)
+                ),
+            ):
+                result = send_fallback(
+                    "hello",
+                    config=_cfg(),
+                    session_id="s1",
+                    turn_id=1,
+                )
 
     assert result["ok"] is True
     assert result["sent"] is True
@@ -55,6 +62,34 @@ def test_send_fallback_success() -> None:
     assert "[roamer-fallback]" not in result["content"]
     assert "session_id" not in result["content"]
     assert "timestamp" in result["payload"]
+    assert ("discord", "send_request") == events[0][:2]
+    assert events[0][2]["content"] == f"hello\n{DEFAULT_REPLY_INSTRUCTION}"
+    assert ("discord", "send_result") == events[1][:2]
+    assert events[1][2]["ok"] is True
+    assert events[1][2]["sent"] is True
+    assert events[1][2]["status"] == 200
+
+
+def test_send_fallback_respects_log_transcripts_setting() -> None:
+    events = []
+    with patch("os.getenv", return_value="token"):
+        with patch("urllib.request.urlopen", return_value=_Resp()):
+            with patch(
+                "roamer.plugins.interaction.services.discord_client.log_event",
+                side_effect=lambda component, event, **fields: events.append(
+                    (component, event, fields)
+                ),
+            ):
+                result = send_fallback(
+                    "hello",
+                    config={**_cfg(), "logging": {"log_transcripts": False}},
+                    session_id="s1",
+                    turn_id=1,
+                )
+
+    assert result["ok"] is True
+    assert events[0][2]["content"] == ""
+    assert events[0][2]["content_length"] > 0
 
 
 def test_send_fallback_uses_configured_reply_instruction() -> None:
@@ -122,15 +157,26 @@ def test_send_fallback_prefixes_raw_mention_when_configured() -> None:
 
 
 def test_send_fallback_http_error() -> None:
+    events = []
     with patch("os.getenv", return_value="token"):
         with patch(
             "urllib.request.urlopen",
             side_effect=HTTPError("u", 500, "err", hdrs=None, fp=io.BytesIO(b"")),
         ):
-            result = send_fallback("x", config=_cfg(), session_id="s1", turn_id=2)
+            with patch(
+                "roamer.plugins.interaction.services.discord_client.log_event",
+                side_effect=lambda component, event, **fields: events.append(
+                    (component, event, fields)
+                ),
+            ):
+                result = send_fallback("x", config=_cfg(), session_id="s1", turn_id=2)
 
     assert result["ok"] is False
     assert result["error_code"] == ErrorCode.CONVERSE_DISCORD_SEND_FAILED
+    assert ("discord", "send_result") == events[-1][:2]
+    assert events[-1][2]["ok"] is False
+    assert events[-1][2]["status"] == 500
+    assert events[-1][2]["error_code"] == ErrorCode.CONVERSE_DISCORD_SEND_FAILED
 
 
 def test_send_fallback_timeout_or_runtime_error() -> None:
@@ -143,7 +189,15 @@ def test_send_fallback_timeout_or_runtime_error() -> None:
 
 
 def test_send_fallback_disabled() -> None:
-    result = send_fallback("x", config=_cfg(enabled=False), session_id="s1", turn_id=4)
+    events = []
+    with patch(
+        "roamer.plugins.interaction.services.discord_client.log_event",
+        side_effect=lambda component, event, **fields: events.append((component, event, fields)),
+    ):
+        result = send_fallback("x", config=_cfg(enabled=False), session_id="s1", turn_id=4)
+
     assert result["ok"] is True
     assert result["sent"] is False
     assert result["skipped"] is True
+    assert ("discord", "send_result") == events[0][:2]
+    assert events[0][2]["skipped"] is True
