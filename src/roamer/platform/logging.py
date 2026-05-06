@@ -95,19 +95,21 @@ def setup_logging(config: dict[str, Any]) -> None:
         logger.propagate = False
         return
 
-    log_dir = Path(str(logging_cfg.get("dir", "/var/log/roamer"))).expanduser()
-    log_dir.mkdir(parents=True, exist_ok=True)
-    _cleanup_old_logs(
-        log_dir,
-        retention_days=int(logging_cfg.get("retention_days", 3)),
-    )
-
-    handler = RotatingFileHandler(
-        log_dir / "roamer.log",
-        maxBytes=int(logging_cfg.get("max_bytes", 10 * 1024 * 1024)),
-        backupCount=int(logging_cfg.get("backup_count", 10)),
-        encoding="utf-8",
-    )
+    try:
+        log_dir = Path(str(logging_cfg.get("dir", "/var/log/roamer"))).expanduser()
+        log_dir.mkdir(parents=True, exist_ok=True)
+        _cleanup_old_logs(
+            log_dir,
+            retention_days=int(logging_cfg.get("retention_days", 3)),
+        )
+        handler = RotatingFileHandler(
+            log_dir / "roamer.log",
+            maxBytes=int(logging_cfg.get("max_bytes", 10 * 1024 * 1024)),
+            backupCount=int(logging_cfg.get("backup_count", 10)),
+            encoding="utf-8",
+        )
+    except OSError:
+        handler = py_logging.NullHandler()
     handler.setFormatter(_JsonLineFormatter())
 
     logger.addHandler(handler)

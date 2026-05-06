@@ -7,6 +7,7 @@ import click
 
 from roamer.platform.config import load_config
 from roamer.platform.contract import ErrorCode, exit_category_for_error
+from roamer.platform.logging import setup_logging
 from roamer.platform.output import attach_contract_fields, error
 from roamer.platform.plugin_registry import registry
 from roamer.platform.runtime import run_action
@@ -104,6 +105,7 @@ def main(ctx: click.Context, config: Path | None) -> None:
     """Roamer - Richerd's physical body CLI."""
     ctx.ensure_object(dict)
     ctx.obj["config"] = load_config(config)
+    setup_logging(ctx.obj["config"])
 
 
 # Watch - visual perception
