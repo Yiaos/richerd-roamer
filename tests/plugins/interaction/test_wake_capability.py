@@ -325,7 +325,7 @@ def test_wake_followup_unmatched_text_allows_discord_fallback() -> None:
     cap._listen_once = Mock(
         side_effect=[
             {"ok": True, "text": "Richard"},
-            {"ok": True, "text": "嗯"},
+            {"ok": True, "text": "查天气"},
         ]
     )
     cap._route_text = Mock(return_value={"turn_id": 1, "route": "discord"})
@@ -334,8 +334,50 @@ def test_wake_followup_unmatched_text_allows_discord_fallback() -> None:
 
     assert result["ok"] is True
     cap._route_text.assert_called_once()
-    assert cap._route_text.call_args.kwargs["text"] == "嗯"
+    assert cap._route_text.call_args.kwargs["text"] == "查天气"
     assert cap._route_text.call_args.kwargs["allow_fallback"] is True
+
+
+def test_wake_ignores_single_character_asr_text_in_followup() -> None:
+    config = _config()
+    config["converse"]["wakeword"]["min_interval_sec"] = 0
+    cap = WakeCapability(config)
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._listen_once = Mock(
+        side_effect=[
+            {"ok": True, "text": "Richard"},
+            {"ok": True, "text": "嗯。"},
+            {"ok": True, "text": "帮我查一下明天的天气"},
+        ]
+    )
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "discord"})
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    assert cap._route_text.call_count == 1
+    assert cap._route_text.call_args.kwargs["text"] == "帮我查一下明天的天气"
+    assert cap._route_text.call_args.kwargs["allow_fallback"] is True
+
+
+def test_wake_ignores_single_character_command_after_wake_phrase() -> None:
+    config = _config()
+    config["converse"]["wakeword"]["min_interval_sec"] = 0
+    cap = WakeCapability(config)
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._listen_once = Mock(
+        side_effect=[
+            {"ok": True, "text": "Richard 嗯"},
+            {"ok": True, "text": "Richard 帮我查天气"},
+        ]
+    )
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "discord"})
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    assert cap._route_text.call_count == 1
+    assert cap._route_text.call_args.kwargs["text"] == "帮我查天气"
 
 
 def test_wake_once_propagates_route_text_failure() -> None:

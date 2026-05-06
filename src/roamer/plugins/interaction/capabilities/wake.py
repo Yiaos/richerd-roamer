@@ -200,6 +200,19 @@ class WakeCapability(Capability):
                     if not command_text:
                         self._enter_followup()
                         continue
+                    if self._is_too_short_asr_text(command_text):
+                        log_event(
+                            "wake",
+                            "route_ignored",
+                            session_id=session_id,
+                            reason="single_character_asr",
+                            text=command_text if log_transcripts else "",
+                            matched=bool(match.matched),
+                            in_followup=in_followup,
+                        )
+                        if match.matched or in_followup:
+                            self._enter_followup()
+                        continue
 
                     self._turn_id += 1
                     route_started_at = self._clock()
@@ -257,6 +270,12 @@ class WakeCapability(Capability):
         wake_cfg = self.config.get("converse", {}).get("wakeword", {})
         timeout = float(wake_cfg.get("followup_timeout_sec", 10.0))
         self._followup_until = self._clock() + timeout
+
+    def _is_too_short_asr_text(self, text: str) -> bool:
+        meaningful_chars = [
+            char for char in str(text or "") if char.isalnum() or "\u4e00" <= char <= "\u9fff"
+        ]
+        return len(meaningful_chars) <= 1
 
     def _accept_trigger(self) -> bool:
         wake_cfg = self.config.get("converse", {}).get("wakeword", {})
