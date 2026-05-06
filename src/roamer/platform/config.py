@@ -108,7 +108,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "ignore_while_speaking": True,
             "prompt_sound": False,
             "phrases": ["richard", "rich erd", "瑞彻德"],
-            "followup_timeout_sec": 10.0,
+            "followup_timeout_sec": 3.0,
         },
         "intents": [
             {"name": "time_now", "action": "time.now", "patterns": ["现在几点", "几点了"]},

@@ -308,7 +308,7 @@ class WakeCapability(Capability):
 
     def _enter_followup(self) -> None:
         wake_cfg = self.config.get("converse", {}).get("wakeword", {})
-        timeout = float(wake_cfg.get("followup_timeout_sec", 10.0))
+        timeout = float(wake_cfg.get("followup_timeout_sec", 3.0))
         self._followup_until = self._clock() + timeout
 
     def _is_too_short_asr_text(self, text: str) -> bool:

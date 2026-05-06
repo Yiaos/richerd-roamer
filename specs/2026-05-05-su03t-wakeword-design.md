@@ -129,7 +129,7 @@ converse:
       - richard
       - rich erd
       - 瑞彻德
-    followup_timeout_sec: 10.0
+    followup_timeout_sec: 3.0
 
   endpoint:
     mode: vad_endpoint
