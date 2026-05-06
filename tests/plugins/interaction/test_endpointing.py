@@ -177,6 +177,44 @@ def test_endpoint_short_utterance_preserves_pre_speech_padding(tmp_path: Path) -
     assert result["size_bytes"] == 44 + (5 * 160 * 2)
 
 
+def test_endpoint_logs_record_timeline(monkeypatch, tmp_path: Path) -> None:
+    events = []
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.services.endpointing.log_event",
+        lambda component, event, **fields: events.append((component, event, fields)),
+    )
+
+    result = _record(tmp_path, [0.0, 0.8, 0.9, 0.1, 0.0])
+
+    assert result["ok"] is True
+    assert [event for _component, event, _fields in events] == [
+        "record_start",
+        "speech_start",
+        "endpoint_reached",
+        "record_done",
+    ]
+    assert events[0][2]["max_record_sec"] == 2.0
+    assert events[1][2]["total_chunks"] == 2
+    assert events[2][2]["endpoint_latency_sec"] == 0.2
+    assert events[3][2]["ok"] is True
+
+
+def test_endpoint_logs_record_failure(monkeypatch, tmp_path: Path) -> None:
+    events = []
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.services.endpointing.log_event",
+        lambda component, event, **fields: events.append((component, event, fields)),
+    )
+
+    result = _record(tmp_path, [0.0, 0.1, 0.2, 0.1, 0.0])
+
+    assert result["ok"] is False
+    failed = [item for item in events if item[1] == "record_failed"]
+    assert len(failed) == 1
+    assert failed[0][2]["reason"] == "no_speech_timeout"
+    assert failed[0][2]["endpoint_metrics"]["speech_duration_sec"] == 0.0
+
+
 def test_endpoint_hesitant_pause_below_silence_does_not_cut(tmp_path: Path) -> None:
     result = _record(tmp_path, [0.0, 0.8, 0.1, 0.9, 0.1, 0.0])
 

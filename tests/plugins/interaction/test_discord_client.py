@@ -34,10 +34,15 @@ class _Resp:
         return False
 
 
+class _JsonResp(_Resp):
+    def read(self):
+        return b'{"id":"msg-1"}'
+
+
 def test_send_fallback_success() -> None:
     events = []
     with patch("os.getenv", return_value="token"):
-        with patch("urllib.request.urlopen", return_value=_Resp()):
+        with patch("urllib.request.urlopen", return_value=_JsonResp()):
             with patch(
                 "roamer.plugins.interaction.services.discord_client.log_event",
                 side_effect=lambda component, event, **fields: events.append(
@@ -68,6 +73,8 @@ def test_send_fallback_success() -> None:
     assert events[1][2]["ok"] is True
     assert events[1][2]["sent"] is True
     assert events[1][2]["status"] == 200
+    assert events[1][2]["status_code"] == 200
+    assert events[1][2]["message_id"] == "msg-1"
 
 
 def test_send_fallback_respects_log_transcripts_setting() -> None:

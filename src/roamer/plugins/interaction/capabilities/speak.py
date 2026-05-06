@@ -127,8 +127,34 @@ class SpeakCapability(Capability):
         try:
             logging_cfg = self.config.get("logging", {})
             log_text = text if bool(logging_cfg.get("log_transcripts", True)) else ""
+            log_audio_path = output if bool(logging_cfg.get("log_audio_paths", False)) else None
+            log_event(
+                "speak",
+                "start",
+                text=log_text,
+                play=play,
+                style=style,
+                audio_path=log_audio_path,
+            )
             # Synthesize
+            tts_started_at = time.monotonic()
+            log_event(
+                "speak",
+                "tts_start",
+                text=log_text,
+                style=style,
+                audio_path=log_audio_path,
+            )
             tts_result = self._tts.synthesize(text, output, style=style)
+            log_event(
+                "speak",
+                "tts_done",
+                ok=bool(tts_result.get("ok", False)),
+                error_code=tts_result.get("error_code"),
+                duration_sec=tts_result.get("duration_sec"),
+                duration_ms=round((time.monotonic() - tts_started_at) * 1000, 3),
+                audio_path=log_audio_path,
+            )
             if not tts_result.get("ok"):
                 return tts_result
 
@@ -137,6 +163,14 @@ class SpeakCapability(Capability):
             if play:
                 # Ensure Bluetooth speaker is connected
                 self._ensure_bluetooth_connected()
+                play_started_at = time.monotonic()
+                log_event(
+                    "speak",
+                    "play_start",
+                    text=log_text,
+                    play=True,
+                    audio_path=log_audio_path,
+                )
                 play_result = self._audio.play(output)
                 if not play_result.get("ok"):
                     response = success(
@@ -150,6 +184,17 @@ class SpeakCapability(Capability):
                     )
                     log_event(
                         "speak",
+                        "play_done",
+                        ok=False,
+                        played=False,
+                        play=True,
+                        error_code=play_result.get("error_code"),
+                        warning_code=response.get("warning_code"),
+                        duration_ms=round((time.monotonic() - play_started_at) * 1000, 3),
+                        audio_path=log_audio_path,
+                    )
+                    log_event(
+                        "speak",
                         "playback",
                         text=log_text,
                         played=False,
@@ -160,6 +205,15 @@ class SpeakCapability(Capability):
                     )
                     return response
                 played = True
+                log_event(
+                    "speak",
+                    "play_done",
+                    ok=True,
+                    played=True,
+                    play=True,
+                    duration_ms=round((time.monotonic() - play_started_at) * 1000, 3),
+                    audio_path=log_audio_path,
+                )
 
             response = success(
                 text=text,

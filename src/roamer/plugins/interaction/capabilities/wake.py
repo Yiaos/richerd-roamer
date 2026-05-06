@@ -82,27 +82,74 @@ class WakeCapability(Capability):
                         error_code=ErrorCode.AUDIO_RECORD_COMMAND_FAILED,
                     )
 
-                if not self._in_followup():
-                    try:
-                        triggered = self._wait_for_trigger(wait_timeout)
-                    except Exception as exc:
-                        return error(
-                            "converse_wakeword_unavailable",
-                            f"Wake trigger unavailable: {exc}",
-                            error_code=ErrorCode.CONVERSE_WAKEWORD_UNAVAILABLE,
-                        )
-                    if triggered and not self._accept_trigger():
-                        continue
-                    if not triggered:
-                        if deadline is not None:
-                            return success(completed=True, reason="wake_timeout", turns=[])
-                        continue
-
                 with request_context(uuid.uuid4().hex[:12]):
+                    in_followup_wait = self._in_followup()
+                    if not in_followup_wait:
+                        wait_started_at = self._clock()
+                        log_event(
+                            "wake",
+                            "trigger_wait_start",
+                            session_id=session_id,
+                            timeout_sec=wait_timeout,
+                        )
+                        try:
+                            triggered = self._wait_for_trigger(wait_timeout)
+                        except Exception as exc:
+                            return error(
+                                "converse_wakeword_unavailable",
+                                f"Wake trigger unavailable: {exc}",
+                                error_code=ErrorCode.CONVERSE_WAKEWORD_UNAVAILABLE,
+                            )
+                        if triggered:
+                            accepted = self._accept_trigger()
+                            log_event(
+                                "wake",
+                                "trigger_hit",
+                                session_id=session_id,
+                                accepted=accepted,
+                                duration_ms=round((self._clock() - wait_started_at) * 1000, 3),
+                            )
+                            if not accepted:
+                                log_event(
+                                    "wake",
+                                    "trigger_rejected",
+                                    session_id=session_id,
+                                    reason="min_interval",
+                                )
+                                continue
+                        else:
+                            log_event(
+                                "wake",
+                                "trigger_timeout",
+                                session_id=session_id,
+                                timeout_sec=wait_timeout,
+                                duration_ms=round((self._clock() - wait_started_at) * 1000, 3),
+                            )
+                            if deadline is not None:
+                                return success(completed=True, reason="wake_timeout", turns=[])
+                            continue
+
                     record_timeout = None if pre_roll_source is not None else wait_timeout
+                    listen_started_at = self._clock()
+                    log_event(
+                        "wake",
+                        "listen_start",
+                        session_id=session_id,
+                        timeout_sec=record_timeout,
+                        in_followup=in_followup_wait,
+                    )
                     listen_result = self._listen_once(
                         timeout=record_timeout,
                         pre_roll_source=pre_roll_source,
+                    )
+                    log_event(
+                        "wake",
+                        "listen_done",
+                        session_id=session_id,
+                        ok=bool(listen_result.get("ok", False)),
+                        error_code=listen_result.get("error_code"),
+                        duration_ms=round((self._clock() - listen_started_at) * 1000, 3),
+                        endpoint_metrics=listen_result.get("endpoint_metrics"),
                     )
                     if not listen_result.get("ok"):
                         if once:
@@ -146,12 +193,33 @@ class WakeCapability(Capability):
                         continue
 
                     self._turn_id += 1
+                    route_started_at = self._clock()
+                    log_event(
+                        "wake",
+                        "route_start",
+                        session_id=session_id,
+                        turn_id=self._turn_id,
+                        text=command_text if log_transcripts else "",
+                        matched=bool(match.matched),
+                        in_followup=in_followup,
+                    )
                     turn = self._route_text(
                         text=command_text,
                         session_id=session_id,
                         turn_id=self._turn_id,
                         no_sound=no_sound,
                         allow_fallback=bool(match.matched),
+                    )
+                    log_event(
+                        "wake",
+                        "route_done",
+                        session_id=session_id,
+                        turn_id=self._turn_id,
+                        ok=bool(turn.get("ok", True)),
+                        error_code=turn.get("error_code"),
+                        route=turn.get("route"),
+                        action=turn.get("action"),
+                        duration_ms=round((self._clock() - route_started_at) * 1000, 3),
                     )
                     if not turn.get("ok", True):
                         intent_result = turn.get("intent_result")

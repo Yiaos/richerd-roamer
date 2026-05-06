@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
+from roamer.plugins.interaction.capabilities.audio import AudioCapability
 from roamer.plugins.interaction.capabilities.converse import ConverseCapability
 from roamer.plugins.interaction.capabilities.listen import ListenCapability
 from roamer.plugins.interaction.capabilities.speak import SpeakCapability
@@ -23,6 +24,13 @@ def _converse_config() -> dict:
     }
 
 
+def _event(events: list, name: str) -> tuple:
+    for item in events:
+        if item[1] == name:
+            return item
+    raise AssertionError(f"missing event {name}; got {[item[1] for item in events]}")
+
+
 def test_wake_logs_transcript_and_match(monkeypatch) -> None:
     events = []
     cap = WakeCapability(_converse_config())
@@ -38,10 +46,17 @@ def test_wake_logs_transcript_and_match(monkeypatch) -> None:
     result = cap.run(once=True, timeout=1.0, no_sound=True)
 
     assert result["ok"] is True
-    assert ("wake", "asr_transcript") == events[0][:2]
-    assert events[0][2]["text"] == "瑞彻德 现在几点了"
-    assert events[0][2]["matched"] is True
-    assert events[0][2]["command_text"] == "现在几点了"
+    assert _event(events, "trigger_wait_start")[0] == "wake"
+    assert _event(events, "trigger_hit")[0] == "wake"
+    assert _event(events, "listen_start")[0] == "wake"
+    assert _event(events, "listen_done")[2]["ok"] is True
+    asr_event = _event(events, "asr_transcript")
+    assert ("wake", "asr_transcript") == asr_event[:2]
+    assert asr_event[2]["text"] == "瑞彻德 现在几点了"
+    assert asr_event[2]["matched"] is True
+    assert asr_event[2]["command_text"] == "现在几点了"
+    assert _event(events, "route_start")[2]["text"] == "现在几点了"
+    assert _event(events, "route_done")[2]["ok"] is True
 
 
 def test_wake_respects_log_transcripts_setting(monkeypatch) -> None:
@@ -61,8 +76,9 @@ def test_wake_respects_log_transcripts_setting(monkeypatch) -> None:
     result = cap.run(once=True, timeout=1.0, no_sound=True)
 
     assert result["ok"] is True
-    assert events[0][2]["text"] == ""
-    assert events[0][2]["command_text"] == ""
+    asr_event = _event(events, "asr_transcript")
+    assert asr_event[2]["text"] == ""
+    assert asr_event[2]["command_text"] == ""
 
 
 def test_wake_does_not_log_empty_transcript(monkeypatch) -> None:
@@ -79,7 +95,7 @@ def test_wake_does_not_log_empty_transcript(monkeypatch) -> None:
     result = cap.run(once=True, timeout=1.0, no_sound=True)
 
     assert result["ok"] is True
-    assert events == []
+    assert all(event != "asr_transcript" for _component, event, _fields in events)
 
 
 def test_converse_logs_route_decision(monkeypatch) -> None:
@@ -140,8 +156,13 @@ def test_listen_logs_asr_transcript(monkeypatch, tmp_path) -> None:
     result = cap.transcribe_audio_file(str(tmp_path / "input.wav"))
 
     assert result["ok"] is True
-    assert ("listen", "asr_transcript") == events[0][:2]
-    assert events[0][2]["text"] == "瑞彻德"
+    assert _event(events, "vad_start")[0] == "listen"
+    assert _event(events, "vad_done")[2]["speech_detected"] is True
+    assert _event(events, "asr_start")[0] == "listen"
+    assert _event(events, "asr_done")[2]["ok"] is True
+    transcript = _event(events, "asr_transcript")
+    assert ("listen", "asr_transcript") == transcript[:2]
+    assert transcript[2]["text"] == "瑞彻德"
 
 
 def test_listen_does_not_log_empty_asr_transcript(monkeypatch, tmp_path) -> None:
@@ -170,7 +191,8 @@ def test_listen_does_not_log_empty_asr_transcript(monkeypatch, tmp_path) -> None
 
     assert result["ok"] is True
     assert result["text"] == "   "
-    assert events == []
+    assert _event(events, "asr_done")[2]["ok"] is True
+    assert all(event != "asr_transcript" for _component, event, _fields in events)
 
 
 def test_speak_logs_playback_result(monkeypatch, tmp_path) -> None:
@@ -192,9 +214,15 @@ def test_speak_logs_playback_result(monkeypatch, tmp_path) -> None:
         result = cap.speak("测试语音", play=True)
 
     assert result["ok"] is True
-    assert ("speak", "playback") == events[0][:2]
-    assert events[0][2]["text"] == "测试语音"
-    assert events[0][2]["played"] is True
+    assert _event(events, "start")[2]["text"] == "测试语音"
+    assert _event(events, "tts_start")[2]["text"] == "测试语音"
+    assert _event(events, "tts_done")[2]["duration_sec"] == 1.0
+    assert _event(events, "play_start")[2]["play"] is True
+    assert _event(events, "play_done")[2]["played"] is True
+    playback = _event(events, "playback")
+    assert ("speak", "playback") == playback[:2]
+    assert playback[2]["text"] == "测试语音"
+    assert playback[2]["played"] is True
 
 
 def test_speak_respects_log_transcripts_setting(monkeypatch, tmp_path) -> None:
@@ -218,10 +246,39 @@ def test_speak_respects_log_transcripts_setting(monkeypatch, tmp_path) -> None:
             lambda component, event, **fields: events.append((component, event, fields)),
         )
 
-        result = cap.speak("测试语音", play=True)
+    result = cap.speak("测试语音", play=True)
 
     assert result["ok"] is True
-    assert events[0][2]["text"] == ""
+    assert _event(events, "start")[2]["text"] == ""
+    assert _event(events, "playback")[2]["text"] == ""
+
+
+def test_audio_logs_record_play_and_stream_lifecycle(monkeypatch) -> None:
+    events = []
+    cap = AudioCapability.__new__(AudioCapability)
+    cap.config = {}
+    cap._driver = Mock()
+    cap._driver.record.return_value = {"ok": True, "path": "/tmp/a.wav", "duration_sec": 1.0}
+    cap._driver.play.return_value = {"ok": True, "played": "/tmp/a.wav"}
+    cap._driver.stream_chunks.return_value = iter([b"one", b"two"])
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.capabilities.audio.log_event",
+        lambda component, event, **fields: events.append((component, event, fields)),
+    )
+
+    assert cap.record(duration=1.0, output="/tmp/a.wav")["ok"] is True
+    assert cap.play("/tmp/a.wav")["ok"] is True
+    assert list(cap.stream_chunks(chunk_duration_sec=0.1, max_duration_sec=0.2)) == [
+        b"one",
+        b"two",
+    ]
+
+    assert _event(events, "record_start")[0] == "audio"
+    assert _event(events, "record_done")[2]["ok"] is True
+    assert _event(events, "play_start")[0] == "audio"
+    assert _event(events, "play_done")[2]["ok"] is True
+    assert _event(events, "stream_start")[0] == "audio"
+    assert _event(events, "stream_done")[2]["chunk_count"] == 2
 
 
 def test_serve_runtime_logs_request(monkeypatch) -> None:

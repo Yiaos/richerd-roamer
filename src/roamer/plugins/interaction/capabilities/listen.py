@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+import time
 import wave
 from pathlib import Path
 from typing import Any
@@ -88,6 +89,15 @@ class ListenCapability(Capability):
         audio_path = save_audio if save_audio else self._create_temp_audio("roamer_rec_")
         cleanup_audio = save_audio is None
         endpoint_metrics: dict[str, Any] | None = None
+        started_at = time.monotonic()
+        log_event(
+            "listen",
+            "record_start",
+            timeout_sec=timeout,
+            save_audio=save_audio,
+            use_endpointing=use_endpointing,
+            audio_path=self._log_audio_path(audio_path),
+        )
 
         try:
             # Record audio
@@ -109,19 +119,19 @@ class ListenCapability(Capability):
                     )
                     record_result = recorder.record()
                 except NotImplementedError as exc:
-                    return error(
+                    record_result = error(
                         "audio_record_failed",
                         str(exc),
                         error_code=ErrorCode.AUDIO_RECORD_COMMAND_FAILED,
                     )
                 except FileNotFoundError:
-                    return error(
+                    record_result = error(
                         "audio_record_failed",
                         "arecord not installed",
                         error_code=ErrorCode.DEPENDENCY_AUDIO_ARECORD_MISSING,
                     )
                 except OSError as exc:
-                    return error(
+                    record_result = error(
                         "audio_record_failed",
                         "Endpoint recording failed",
                         details=str(exc),
@@ -130,6 +140,15 @@ class ListenCapability(Capability):
             else:
                 log(f"Recording for {timeout}s to {audio_path}")
                 record_result = self._audio.record(duration=timeout, output=audio_path)
+            log_event(
+                "listen",
+                "record_done",
+                ok=bool(record_result.get("ok", False)),
+                error_code=record_result.get("error_code"),
+                duration_ms=round((time.monotonic() - started_at) * 1000, 3),
+                endpoint_metrics=record_result.get("endpoint_metrics"),
+                audio_path=self._log_audio_path(audio_path),
+            )
             if not record_result.get("ok"):
                 log(f"Recording failed: {record_result}")
                 return record_result
@@ -166,6 +185,7 @@ class ListenCapability(Capability):
 
         trimmed_path = self._create_temp_audio("roamer_speech_")
         try:
+            vad_started_at = time.monotonic()
             # Load audio for VAD
             try:
                 audio, sample_rate = self._load_wav(audio_path)
@@ -183,8 +203,24 @@ class ListenCapability(Capability):
 
             # Run VAD
             log("Running VAD...")
+            log_event(
+                "listen",
+                "vad_start",
+                audio_path=self._log_audio_path(audio_path),
+                sample_rate=sample_rate,
+            )
             vad_result = self._vad.detect(audio, sample_rate, debug=debug)
             log(f"VAD result: {vad_result}")
+            segments = vad_result.get("segments", []) if vad_result.get("ok") else []
+            log_event(
+                "listen",
+                "vad_done",
+                ok=bool(vad_result.get("ok", False)),
+                error_code=vad_result.get("error_code"),
+                speech_detected=bool(vad_result.get("speech_detected", False)),
+                segment_count=len(segments),
+                duration_ms=round((time.monotonic() - vad_started_at) * 1000, 3),
+            )
             if not vad_result.get("ok"):
                 return vad_result
 
@@ -197,7 +233,6 @@ class ListenCapability(Capability):
                 )
 
             # Get speech segments
-            segments = vad_result.get("segments", [])
             if not segments:
                 log("No speech segments found")
                 return error(
@@ -225,7 +260,23 @@ class ListenCapability(Capability):
                 )
 
             # Run ASR
+            asr_started_at = time.monotonic()
+            log_event(
+                "listen",
+                "asr_start",
+                audio_path=self._log_audio_path(trimmed_path),
+                duration_sec=end_time - start_time,
+            )
             asr_result = self._asr.transcribe(trimmed_path)
+            log_event(
+                "listen",
+                "asr_done",
+                ok=bool(asr_result.get("ok", False)),
+                error_code=asr_result.get("error_code"),
+                confidence=asr_result.get("confidence"),
+                duration_sec=end_time - start_time,
+                duration_ms=round((time.monotonic() - asr_started_at) * 1000, 3),
+            )
             if not asr_result.get("ok"):
                 return asr_result
 
@@ -257,6 +308,12 @@ class ListenCapability(Capability):
                 Path(trimmed_path).unlink(missing_ok=True)
             except Exception:
                 pass
+
+    def _log_audio_path(self, path: str | None) -> str | None:
+        logging_cfg = self.config.get("logging", {})
+        if not bool(logging_cfg.get("log_audio_paths", False)):
+            return None
+        return path
 
     def _load_wav(self, path: str) -> tuple[np.ndarray, int]:
         """Load WAV file as numpy array.

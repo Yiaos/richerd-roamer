@@ -33,6 +33,22 @@ def _mention_prefix(discord_cfg: dict[str, Any]) -> str:
     return ""
 
 
+def _read_response_json(resp: Any) -> dict[str, Any]:
+    read = getattr(resp, "read", None)
+    if not callable(read):
+        return {}
+    try:
+        raw = read()
+        if not raw:
+            return {}
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
+        data = json.loads(raw)
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def send_fallback(
     text: str,
     *,
@@ -129,6 +145,7 @@ def send_fallback(
     try:
         with request.urlopen(req, timeout=timeout_sec) as resp:
             status = getattr(resp, "status", 200)
+            response_payload = _read_response_json(resp)
             if 200 <= status < 300:
                 result = success(sent=True, status=status, payload=payload, content=content)
                 log_event(
@@ -137,6 +154,8 @@ def send_fallback(
                     ok=True,
                     sent=True,
                     status=status,
+                    status_code=status,
+                    message_id=response_payload.get("id"),
                     session_id=session_id,
                     turn_id=turn_id,
                 )
@@ -154,6 +173,7 @@ def send_fallback(
                 ok=False,
                 sent=False,
                 status=status,
+                status_code=status,
                 error_code=result.get("error_code"),
                 session_id=session_id,
                 turn_id=turn_id,
@@ -173,6 +193,7 @@ def send_fallback(
             ok=False,
             sent=False,
             status=exc.code,
+            status_code=exc.code,
             error_code=result.get("error_code"),
             session_id=session_id,
             turn_id=turn_id,

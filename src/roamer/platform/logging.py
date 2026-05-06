@@ -20,6 +20,7 @@ _CLEANUP_INTERVAL_SEC = 60 * 60
 _ACTIVE_LOG_DIR: Path | None = None
 _ACTIVE_RETENTION_DAYS = 3
 _NEXT_CLEANUP_AT = 0.0
+_LOG_TRANSCRIPTS = True
 _REQUEST_ID: ContextVar[str | None] = ContextVar("roamer_request_id", default=None)
 
 
@@ -92,9 +93,10 @@ def redact_sensitive(data: Any, *, key: str = "") -> Any:
 
 def setup_logging(config: dict[str, Any]) -> None:
     """Configure Roamer JSONL file logging from config."""
-    global _ACTIVE_LOG_DIR, _ACTIVE_RETENTION_DAYS, _NEXT_CLEANUP_AT
+    global _ACTIVE_LOG_DIR, _ACTIVE_RETENTION_DAYS, _LOG_TRANSCRIPTS, _NEXT_CLEANUP_AT
 
     logging_cfg = config.get("logging", {})
+    _LOG_TRANSCRIPTS = bool(logging_cfg.get("log_transcripts", True))
     logger = py_logging.getLogger(_LOGGER_NAME)
     for handler in list(logger.handlers):
         handler.close()
@@ -133,6 +135,11 @@ def setup_logging(config: dict[str, Any]) -> None:
 def current_request_id() -> str | None:
     """Return the active request id for the current execution context."""
     return _REQUEST_ID.get()
+
+
+def log_transcripts_enabled() -> bool:
+    """Return whether logs may include full transcript/content text."""
+    return _LOG_TRANSCRIPTS
 
 
 @contextmanager
