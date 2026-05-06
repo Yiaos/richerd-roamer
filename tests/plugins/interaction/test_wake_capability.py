@@ -339,25 +339,26 @@ def test_wake_followup_unmatched_text_allows_discord_fallback() -> None:
 
 
 def test_wake_ignores_single_character_asr_text_in_followup() -> None:
-    config = _config()
-    config["converse"]["wakeword"]["min_interval_sec"] = 0
-    cap = WakeCapability(config)
-    cap._wait_for_trigger = Mock(return_value=True)
-    cap._listen_once = Mock(
-        side_effect=[
-            {"ok": True, "text": "Richard"},
-            {"ok": True, "text": "嗯。"},
-            {"ok": True, "text": "帮我查一下明天的天气"},
-        ]
-    )
-    cap._route_text = Mock(return_value={"turn_id": 1, "route": "discord"})
+    for short_text in ["嗯。", "嗯！", "啊。"]:
+        config = _config()
+        config["converse"]["wakeword"]["min_interval_sec"] = 0
+        cap = WakeCapability(config)
+        cap._wait_for_trigger = Mock(return_value=True)
+        cap._listen_once = Mock(
+            side_effect=[
+                {"ok": True, "text": "Richard"},
+                {"ok": True, "text": short_text},
+                {"ok": True, "text": "帮我查一下明天的天气"},
+            ]
+        )
+        cap._route_text = Mock(return_value={"turn_id": 1, "route": "discord"})
 
-    result = cap.run(once=True, timeout=1.0, no_sound=True)
+        result = cap.run(once=True, timeout=1.0, no_sound=True)
 
-    assert result["ok"] is True
-    assert cap._route_text.call_count == 1
-    assert cap._route_text.call_args.kwargs["text"] == "帮我查一下明天的天气"
-    assert cap._route_text.call_args.kwargs["allow_fallback"] is True
+        assert result["ok"] is True
+        assert cap._route_text.call_count == 1
+        assert cap._route_text.call_args.kwargs["text"] == "帮我查一下明天的天气"
+        assert cap._route_text.call_args.kwargs["allow_fallback"] is True
 
 
 def test_wake_ignores_single_character_command_after_wake_phrase() -> None:
