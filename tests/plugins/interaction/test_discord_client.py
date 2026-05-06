@@ -8,6 +8,10 @@ from urllib.error import HTTPError
 from roamer.platform.contract import ErrorCode
 from roamer.plugins.interaction.services.discord_client import send_fallback
 
+DEFAULT_REPLY_INSTRUCTION = (
+    "只回复普通文本，不要调用 tts 或任何语音工具；Roamer 会播放你的文字回复。"
+)
+
 
 def _cfg(enabled: bool = True, **discord_overrides) -> dict:
     discord = {
@@ -46,7 +50,9 @@ def test_send_fallback_success() -> None:
     assert result["payload"]["session_id"] == "s1"
     assert result["payload"]["turn_id"] == 1
     assert result["payload"]["text"] == "hello"
-    assert result["content"] == "hello\n通过 Roamer 语音回复"
+    assert result["content"] == f"hello\n{DEFAULT_REPLY_INSTRUCTION}"
+    assert "tts" in result["content"]
+    assert "不要调用" in result["content"]
     assert "[roamer-fallback]" not in result["content"]
     assert "session_id" not in result["content"]
     assert "timestamp" in result["payload"]
@@ -84,7 +90,7 @@ def test_send_fallback_prefixes_user_mention() -> None:
             )
 
     assert result["ok"] is True
-    assert result["content"] == "<@1477701379437891695> help\n通过 Roamer 语音回复"
+    assert result["content"] == f"<@1477701379437891695> help\n{DEFAULT_REPLY_INSTRUCTION}"
     assert captured["body"]["content"] == result["content"]
 
 
@@ -99,7 +105,7 @@ def test_send_fallback_prefixes_role_mention_when_no_user() -> None:
             )
 
     assert result["ok"] is True
-    assert result["content"] == "<@&42> help\n通过 Roamer 语音回复"
+    assert result["content"] == f"<@&42> help\n{DEFAULT_REPLY_INSTRUCTION}"
 
 
 def test_send_fallback_prefixes_raw_mention_when_configured() -> None:
@@ -113,7 +119,7 @@ def test_send_fallback_prefixes_raw_mention_when_configured() -> None:
             )
 
     assert result["ok"] is True
-    assert result["content"] == "@Richerd help\n通过 Roamer 语音回复"
+    assert result["content"] == f"@Richerd help\n{DEFAULT_REPLY_INSTRUCTION}"
 
 
 def test_send_fallback_http_error() -> None:
