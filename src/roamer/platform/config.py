@@ -78,6 +78,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "request_timeout_sec": 60.0,
         "fallback_to_cli": True,
     },
+    "runtime": {
+        "state_dir": "/run/roamer",
+        "playback_stale_after_sec": 120.0,
+    },
     "logging": {
         "enabled": True,
         "level": "INFO",
@@ -109,6 +113,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "prompt_sound": False,
             "phrases": ["richard", "rich erd", "瑞彻德", "理查德"],
             "followup_timeout_sec": 3.0,
+            "continuous_followup_enabled": True,
+            "max_followup_turns": 3,
+            "stop_phrases": ["不用了", "结束", "停止", "可以了"],
         },
         "intents": [
             {"name": "time_now", "action": "time.now", "patterns": ["现在几点", "几点了"]},

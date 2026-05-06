@@ -137,7 +137,7 @@ def test_wake_logs_unmatched_transcript_as_ignored(monkeypatch) -> None:
     cap._start_preroll_source_if_needed = Mock(return_value=None)
     cap._listen_once = Mock(
         side_effect=[
-            {"ok": True, "text": "车的，现在几点了？"},
+            {"ok": True, "text": "环境噪音"},
             {"ok": True, "text": "瑞彻德 现在几点了"},
         ]
     )
@@ -152,12 +152,12 @@ def test_wake_logs_unmatched_transcript_as_ignored(monkeypatch) -> None:
     assert result["ok"] is True
     ignored = _event(events, "route_ignored")
     assert ignored[2]["reason"] == "wake_phrase_not_matched"
-    assert ignored[2]["text"] == "车的，现在几点了？"
+    assert ignored[2]["text"] == "环境噪音"
     assert ignored[2]["matched"] is False
     assert ignored[2]["in_followup"] is False
 
 
-def test_wake_logs_wake_phrase_only_as_ignored(monkeypatch) -> None:
+def test_wake_logs_wake_phrase_only_as_followup_start(monkeypatch) -> None:
     events = []
     cap = WakeCapability(_converse_config())
     cap._wait_for_trigger = Mock(return_value=True)
@@ -177,10 +177,9 @@ def test_wake_logs_wake_phrase_only_as_ignored(monkeypatch) -> None:
     result = cap.run(once=True, timeout=1.0, no_sound=True)
 
     assert result["ok"] is True
-    ignored = _event(events, "route_ignored")
-    assert ignored[2]["reason"] == "wake_phrase_only"
-    assert ignored[2]["matched"] is True
-    assert ignored[2]["in_followup"] is False
+    followup = _event(events, "followup_start")
+    assert followup[2]["reason"] == "wake_phrase_only"
+    assert followup[2]["session_id"]
 
 
 def test_converse_logs_route_decision(monkeypatch) -> None:
@@ -289,7 +288,12 @@ def test_speak_logs_playback_result(monkeypatch, tmp_path) -> None:
     )
     with patch("roamer.plugins.interaction.capabilities.speak.AudioCapability") as audio_cls:
         audio_cls.return_value.play.return_value = {"ok": True}
-        cap = SpeakCapability({"drivers": {"tts": "edge", "audio": "alsa"}})
+        cap = SpeakCapability(
+            {
+                "drivers": {"tts": "edge", "audio": "alsa"},
+                "runtime": {"state_dir": str(tmp_path / "state")},
+            }
+        )
         cap._create_temp_audio = Mock(return_value=str(tmp_path / "tts.wav"))
         monkeypatch.setattr(
             "roamer.plugins.interaction.capabilities.speak.log_event",
@@ -323,6 +327,7 @@ def test_speak_respects_log_transcripts_setting(monkeypatch, tmp_path) -> None:
             {
                 "drivers": {"tts": "edge", "audio": "alsa"},
                 "logging": {"log_transcripts": False},
+                "runtime": {"state_dir": str(tmp_path / "state")},
             }
         )
         cap._create_temp_audio = Mock(return_value=str(tmp_path / "tts.wav"))

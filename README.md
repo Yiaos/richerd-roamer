@@ -239,6 +239,34 @@ The vLLM service must expose the model id `qwen3-asr-0.6b`. If the realtime
 provider fails or times out, Roamer falls back to the existing FunASR batch path
 when `fallback: batch` is configured.
 
+Continuous wake conversation:
+
+After a SU-03T wake hit, Roamer opens a short follow-up window so the user can
+ask the next question without repeating the wake phrase. Local replies refresh
+the window after playback. Discord fallback returns Roamer to idle while the
+external reply is pending, then opens the follow-up window after `roamer speak`
+finishes playback. Wake listening is skipped while playback is active so Roamer
+does not record its own TTS.
+
+```yaml
+runtime:
+  state_dir: /run/roamer
+  playback_stale_after_sec: 120.0
+
+converse:
+  wakeword:
+    followup_timeout_sec: 3.0
+    continuous_followup_enabled: true
+    max_followup_turns: 3
+    stop_phrases: [不用了, 结束, 停止, 可以了]
+```
+
+The installer creates the shared `/run/roamer` runtime directory through
+systemd-tmpfiles. Playback state uses one marker file per active `roamer speak`
+under `playback.d/`, so overlapping playback cannot clear another process's
+active marker. Roamer treats markers older than
+`runtime.playback_stale_after_sec` as stale.
+
 Create the runtime secret file before installing. Do not commit this file.
 
 ```bash

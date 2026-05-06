@@ -41,6 +41,7 @@ init_service_name="${ROAMER_INIT_SERVICE_NAME:-roamer-init.service}"
 init_service_src="$repo_dir/systemd/roamer-init.service"
 init_service_dst="/etc/systemd/system/$init_service_name"
 init_dropin_dir="/etc/systemd/system/$init_service_name.d"
+tmpfiles_dst="${ROAMER_TMPFILES_DST:-/etc/tmpfiles.d/roamer.conf}"
 
 [[ "$(uname -s)" == "Linux" ]] || die "install.sh must run on Roamer/Linux"
 have sudo || die "sudo is required"
@@ -88,6 +89,29 @@ discord = config.get("converse", {}).get("discord", {})
 print("yes" if discord.get("enabled") is True else "no")
 PY
 )"
+
+runtime_dir="$("$venv_dir/bin/python" - "$repo_dir/config.yaml" <<'PY'
+import sys
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    config = yaml.safe_load(f) or {}
+print(config.get("runtime", {}).get("state_dir") or "/run/roamer")
+PY
+)"
+
+case "$runtime_dir" in
+  /run/*) ;;
+  *) die "runtime.state_dir must live under /run for systemd install: $runtime_dir" ;;
+esac
+
+log "creating shared runtime directory $runtime_dir"
+sudo install -d -m 0750 -o "$roamer_user" -g "$roamer_user" "$runtime_dir"
+tmpfiles_tmp="$(mktemp)"
+printf 'd %s 0750 %s %s -\n' "$runtime_dir" "$roamer_user" "$roamer_user" > "$tmpfiles_tmp"
+sudo install -m 0644 -o root -g root "$tmpfiles_tmp" "$tmpfiles_dst"
+rm -f "$tmpfiles_tmp"
+sudo systemd-tmpfiles --create "$tmpfiles_dst"
 
 required_env_keys=(HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy NO_PROXY no_proxy)
 if [[ "$discord_enabled" == "yes" ]]; then
