@@ -123,7 +123,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         ],
         "endpoint": {
             "mode": "vad_endpoint",
-            "silence_sec": 2.0,
+            "silence_sec": 1.5,
             "min_speech_sec": 0.2,
             "max_record_sec": 10.0,
             "pre_speech_padding_sec": 0.3,
