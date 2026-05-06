@@ -115,6 +115,6 @@ def test_default_su03t_wakeword_config() -> None:
     assert wakeword["edge"] == "rising"
     assert wakeword["pre_roll_sec"] == 1.0
     assert wakeword["followup_timeout_sec"] == 3.0
-    assert wakeword["phrases"] == ["richard", "rich erd", "瑞彻德"]
+    assert wakeword["phrases"] == ["richard", "rich erd", "瑞彻德", "理查德"]
     assert wakeword["prompt_sound"] is False
     assert DEFAULT_CONFIG["converse"]["endpoint"]["mode"] == "vad_endpoint"

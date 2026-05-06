@@ -173,7 +173,9 @@ class WakeCapability(Capability):
 
                     wake_cfg = self.config.get("converse", {}).get("wakeword", {})
                     logging_cfg = self.config.get("logging", {})
-                    phrases = list(wake_cfg.get("phrases") or ["richard", "rich erd", "瑞彻德"])
+                    phrases = list(
+                        wake_cfg.get("phrases") or ["richard", "rich erd", "瑞彻德", "理查德"]
+                    )
                     log_transcripts = bool(logging_cfg.get("log_transcripts", True))
                     text = str(listen_result.get("text") or "").strip()
                     if not text:

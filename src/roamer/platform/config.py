@@ -107,7 +107,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "pre_roll_sec": 1.0,
             "ignore_while_speaking": True,
             "prompt_sound": False,
-            "phrases": ["richard", "rich erd", "瑞彻德"],
+            "phrases": ["richard", "rich erd", "瑞彻德", "理查德"],
             "followup_timeout_sec": 3.0,
         },
         "intents": [

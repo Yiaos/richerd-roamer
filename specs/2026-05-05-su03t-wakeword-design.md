@@ -129,6 +129,7 @@ converse:
       - richard
       - rich erd
       - 瑞彻德
+      - 理查德
     followup_timeout_sec: 3.0
 
   endpoint:

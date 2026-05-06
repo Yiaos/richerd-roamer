@@ -2,7 +2,7 @@
 
 from roamer.plugins.interaction.services.wake_phrases import match_wake_phrase
 
-PHRASES = ["richard", "rich erd", "瑞彻德"]
+PHRASES = ["richard", "rich erd", "瑞彻德", "理查德"]
 
 
 def test_matches_english_prefix_and_strips_command() -> None:
@@ -27,6 +27,14 @@ def test_matches_chinese_variant() -> None:
     assert result.matched is True
     assert result.phrase == "瑞彻德"
     assert result.command_text == "看一下"
+
+
+def test_matches_mandarin_name_variant() -> None:
+    result = match_wake_phrase("理查德 现在几点了", PHRASES)
+
+    assert result.matched is True
+    assert result.phrase == "理查德"
+    assert result.command_text == "现在几点了"
 
 
 def test_non_prefix_does_not_match() -> None:
