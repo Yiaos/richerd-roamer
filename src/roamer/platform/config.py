@@ -78,6 +78,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "request_timeout_sec": 60.0,
         "fallback_to_cli": True,
     },
+    "logging": {
+        "enabled": True,
+        "level": "INFO",
+        "dir": "/var/log/roamer",
+        "max_bytes": 10 * 1024 * 1024,
+        "backup_count": 10,
+        "retention_days": 3,
+        "log_transcripts": True,
+        "log_audio_paths": False,
+    },
     "converse": {
         "enabled": True,
         "silence_timeout": 2.5,

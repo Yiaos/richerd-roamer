@@ -1,0 +1,140 @@
+"""Structured runtime logging for Roamer services."""
+
+from __future__ import annotations
+
+import json
+import logging as py_logging
+import time
+from datetime import datetime
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+from typing import Any
+from urllib.parse import SplitResult, urlsplit, urlunsplit
+
+_LOGGER_NAME = "roamer"
+_SENSITIVE_KEY_PARTS = ("token", "secret", "password", "authorization", "proxy")
+
+
+class _JsonLineFormatter(py_logging.Formatter):
+    def format(self, record: py_logging.LogRecord) -> str:
+        payload = {
+            "ts": datetime.now().astimezone().isoformat(timespec="milliseconds"),
+            "level": record.levelname,
+            **getattr(record, "payload", {}),
+        }
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+def mask_sensitive_value(value: str) -> str:
+    """Mask a sensitive value while preserving enough edge characters for debugging."""
+    text = str(value)
+    if len(text) <= 2:
+        return "***"
+    if len(text) <= 8:
+        return f"{text[0]}***{text[-1]}"
+    return f"{text[:4]}***{text[-4:]}"
+
+
+def _mask_url(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return mask_sensitive_value(value)
+
+    if not parsed.scheme or not parsed.netloc or "@" not in parsed.netloc:
+        return mask_sensitive_value(value)
+
+    userinfo, hostinfo = parsed.netloc.rsplit("@", 1)
+    if ":" in userinfo:
+        user, password = userinfo.split(":", 1)
+        masked_userinfo = f"{mask_sensitive_value(user)}:{mask_sensitive_value(password)}"
+    else:
+        masked_userinfo = mask_sensitive_value(userinfo)
+    return urlunsplit(
+        SplitResult(
+            parsed.scheme,
+            f"{masked_userinfo}@{hostinfo}",
+            parsed.path,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+
+
+def _is_sensitive_key(key: str) -> bool:
+    lowered = key.lower()
+    return any(part in lowered for part in _SENSITIVE_KEY_PARTS)
+
+
+def redact_sensitive(data: Any, *, key: str = "") -> Any:
+    """Recursively redact sensitive fields from log payloads."""
+    if isinstance(data, dict):
+        return {str(k): redact_sensitive(v, key=str(k)) for k, v in data.items()}
+    if isinstance(data, list):
+        return [redact_sensitive(item, key=key) for item in data]
+    if isinstance(data, tuple):
+        return [redact_sensitive(item, key=key) for item in data]
+    if _is_sensitive_key(key):
+        text = str(data)
+        if "://" in text:
+            return _mask_url(text)
+        return mask_sensitive_value(text)
+    return data
+
+
+def setup_logging(config: dict[str, Any]) -> None:
+    """Configure Roamer JSONL file logging from config."""
+    logging_cfg = config.get("logging", {})
+    logger = py_logging.getLogger(_LOGGER_NAME)
+    for handler in list(logger.handlers):
+        handler.close()
+        logger.removeHandler(handler)
+
+    if not bool(logging_cfg.get("enabled", True)):
+        logger.addHandler(py_logging.NullHandler())
+        logger.propagate = False
+        return
+
+    log_dir = Path(str(logging_cfg.get("dir", "/var/log/roamer"))).expanduser()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    _cleanup_old_logs(
+        log_dir,
+        retention_days=int(logging_cfg.get("retention_days", 3)),
+    )
+
+    handler = RotatingFileHandler(
+        log_dir / "roamer.log",
+        maxBytes=int(logging_cfg.get("max_bytes", 10 * 1024 * 1024)),
+        backupCount=int(logging_cfg.get("backup_count", 10)),
+        encoding="utf-8",
+    )
+    handler.setFormatter(_JsonLineFormatter())
+
+    logger.addHandler(handler)
+    logger.setLevel(str(logging_cfg.get("level", "INFO")).upper())
+    logger.propagate = False
+
+
+def log_event(component: str, event: str, *, level: str = "INFO", **fields: Any) -> None:
+    """Write one structured runtime event if logging has been configured."""
+    logger = py_logging.getLogger(_LOGGER_NAME)
+    if not logger.handlers:
+        return
+    payload = {
+        "component": component,
+        "event": event,
+        **redact_sensitive(fields),
+    }
+    logger.log(getattr(py_logging, level.upper(), py_logging.INFO), "", extra={"payload": payload})
+
+
+def _cleanup_old_logs(log_dir: Path, *, retention_days: int) -> None:
+    if retention_days <= 0:
+        return
+    cutoff = time.time() - (retention_days * 24 * 60 * 60)
+    for path in log_dir.glob("roamer.log*"):
+        try:
+            if path.is_file() and path.stat().st_mtime < cutoff:
+                path.unlink()
+        except FileNotFoundError:
+            continue
