@@ -69,13 +69,7 @@ def send_fallback(
 
     instruction = str(
         discord_cfg.get("reply_instruction")
-        or (
-            "这是来自 OpenClaw roamer node 的语音输入。"
-            "请判断用户意图；如果内容不完整或不像一个完整请求，"
-            "请通过 roamer 的语音播放能力让用户再说一遍，不要猜。"
-            "如果内容完整，请直接调用 roamer node 的 tts/speak 能力，"
-            "通过 Roamer 蓝牙音箱向用户语音回复，不要只在 Discord 回复文本。"
-        )
+        or "只回复普通文本，不要调用 tts 或任何语音工具；Roamer 会播放你的文字回复。"
     )
     content = _mention_prefix(discord_cfg) + str(text).strip() + "\n" + instruction
     body = {"content": content}
