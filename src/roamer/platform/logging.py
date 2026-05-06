@@ -13,6 +13,10 @@ from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 _LOGGER_NAME = "roamer"
 _SENSITIVE_KEY_PARTS = ("token", "secret", "password", "authorization", "proxy")
+_CLEANUP_INTERVAL_SEC = 60 * 60
+_ACTIVE_LOG_DIR: Path | None = None
+_ACTIVE_RETENTION_DAYS = 3
+_NEXT_CLEANUP_AT = 0.0
 
 
 class _JsonLineFormatter(py_logging.Formatter):
@@ -84,6 +88,8 @@ def redact_sensitive(data: Any, *, key: str = "") -> Any:
 
 def setup_logging(config: dict[str, Any]) -> None:
     """Configure Roamer JSONL file logging from config."""
+    global _ACTIVE_LOG_DIR, _ACTIVE_RETENTION_DAYS, _NEXT_CLEANUP_AT
+
     logging_cfg = config.get("logging", {})
     logger = py_logging.getLogger(_LOGGER_NAME)
     for handler in list(logger.handlers):
@@ -91,17 +97,19 @@ def setup_logging(config: dict[str, Any]) -> None:
         logger.removeHandler(handler)
 
     if not bool(logging_cfg.get("enabled", True)):
+        _ACTIVE_LOG_DIR = None
         logger.addHandler(py_logging.NullHandler())
         logger.propagate = False
         return
 
     try:
         log_dir = Path(str(logging_cfg.get("dir", "/var/log/roamer"))).expanduser()
+        retention_days = int(logging_cfg.get("retention_days", 3))
         log_dir.mkdir(parents=True, exist_ok=True)
-        _cleanup_old_logs(
-            log_dir,
-            retention_days=int(logging_cfg.get("retention_days", 3)),
-        )
+        _cleanup_old_logs(log_dir, retention_days=retention_days)
+        _ACTIVE_LOG_DIR = log_dir
+        _ACTIVE_RETENTION_DAYS = retention_days
+        _NEXT_CLEANUP_AT = time.time() + _CLEANUP_INTERVAL_SEC
         handler = RotatingFileHandler(
             log_dir / "roamer.log",
             maxBytes=int(logging_cfg.get("max_bytes", 10 * 1024 * 1024)),
@@ -109,6 +117,7 @@ def setup_logging(config: dict[str, Any]) -> None:
             encoding="utf-8",
         )
     except OSError:
+        _ACTIVE_LOG_DIR = None
         handler = py_logging.NullHandler()
     handler.setFormatter(_JsonLineFormatter())
 
@@ -122,6 +131,7 @@ def log_event(component: str, event: str, *, level: str = "INFO", **fields: Any)
     logger = py_logging.getLogger(_LOGGER_NAME)
     if not logger.handlers:
         return
+    _maybe_cleanup_old_logs()
     payload = {
         "component": component,
         "event": event,
@@ -140,3 +150,15 @@ def _cleanup_old_logs(log_dir: Path, *, retention_days: int) -> None:
                 path.unlink()
         except FileNotFoundError:
             continue
+
+
+def _maybe_cleanup_old_logs() -> None:
+    global _NEXT_CLEANUP_AT
+
+    if _ACTIVE_LOG_DIR is None:
+        return
+    now = time.time()
+    if now < _NEXT_CLEANUP_AT:
+        return
+    _cleanup_old_logs(_ACTIVE_LOG_DIR, retention_days=_ACTIVE_RETENTION_DAYS)
+    _NEXT_CLEANUP_AT = now + _CLEANUP_INTERVAL_SEC

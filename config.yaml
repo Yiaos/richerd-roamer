@@ -59,6 +59,16 @@ serve:
   request_timeout_sec: 60.0
   fallback_to_cli: true
 
+logging:
+  enabled: true
+  level: INFO
+  dir: /var/log/roamer
+  max_bytes: 10485760
+  backup_count: 10
+  retention_days: 3
+  log_transcripts: true
+  log_audio_paths: false
+
 valetudo:
   host: 10.0.0.226
   port: 80

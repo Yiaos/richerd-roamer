@@ -8,6 +8,7 @@ import uuid
 from typing import Any
 
 from roamer.platform.contract import ErrorCode
+from roamer.platform.logging import log_event
 from roamer.platform.output import error, success
 from roamer.platform.plugin_registry import registry
 from roamer.platform.runtime import run_action
@@ -112,6 +113,16 @@ class ConverseCapability(Capability):
 
         intent_result = match_intent(text, intents)
         if not intent_result.get("ok"):
+            log_event(
+                "converse",
+                "route_text",
+                text=text,
+                matched=False,
+                route="error",
+                error_code=intent_result.get("error_code"),
+                session_id=session_id,
+                turn_id=turn_id,
+            )
             return {
                 "turn_id": turn_id,
                 "stage": "intent",
@@ -172,6 +183,16 @@ class ConverseCapability(Capability):
             )
             turn_info.update({"route": "discord", "fallback": fallback_result})
 
+        log_event(
+            "converse",
+            "route_text",
+            text=text,
+            matched=bool(intent_result.get("matched")),
+            route=turn_info.get("route"),
+            action=turn_info.get("action"),
+            session_id=session_id,
+            turn_id=turn_id,
+        )
         return turn_info
 
     def run(

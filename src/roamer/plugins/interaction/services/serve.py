@@ -5,10 +5,12 @@ from __future__ import annotations
 import os
 import socket
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
 from roamer.platform.contract import ErrorCode
+from roamer.platform.logging import log_event
 from roamer.platform.output import error, success
 from roamer.platform.plugin_registry import registry
 from roamer.platform.runtime import run_action
@@ -69,27 +71,37 @@ class RoamerServeRuntime:
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         """Handle one decoded serve request."""
+        started_at = time.monotonic()
         command = str(request.get("command") or "")
         args = request.get("args") or {}
         if not isinstance(args, dict):
-            return error(
+            result = error(
                 "serve_request_failed",
                 "Serve request args must be an object",
                 error_code=ErrorCode.SERVE_REQUEST_FAILED,
                 served_by="daemon",
             )
+            log_event(
+                "serve",
+                "request",
+                command=command,
+                ok=False,
+                error_code=result.get("error_code"),
+                duration_ms=round((time.monotonic() - started_at) * 1000, 1),
+            )
+            return result
 
         if command == "ping":
-            return success(pong=True, served_by="daemon")
-        if command == "status":
-            return success(
+            result = success(pong=True, served_by="daemon")
+        elif command == "status":
+            result = success(
                 alive=True,
                 ready=True,
                 registered=self._registered,
                 listen_action_cached=self._listen_action is not None,
                 served_by="daemon",
             )
-        if command == "converse":
+        elif command == "converse":
             self.ensure_registered()
             endpoint_cfg = self.config.get("converse", {}).get("endpoint", {})
             daemon_endpointing = endpoint_cfg.get("mode") == "vad_endpoint"
@@ -98,14 +110,24 @@ class RoamerServeRuntime:
                 args.setdefault("use_endpointing", True)
             result = run_action("converse", **args)
             result["served_by"] = "daemon"
-            return result
+        else:
+            result = error(
+                "serve_request_failed",
+                f"Unsupported serve command: {command or '<empty>'}",
+                error_code=ErrorCode.SERVE_REQUEST_FAILED,
+                served_by="daemon",
+            )
 
-        return error(
-            "serve_request_failed",
-            f"Unsupported serve command: {command or '<empty>'}",
-            error_code=ErrorCode.SERVE_REQUEST_FAILED,
-            served_by="daemon",
+        log_event(
+            "serve",
+            "request",
+            command=command,
+            ok=bool(result.get("ok")),
+            error_code=result.get("error_code"),
+            args=args,
+            duration_ms=round((time.monotonic() - started_at) * 1000, 1),
         )
+        return result
 
 
 def serve_forever(

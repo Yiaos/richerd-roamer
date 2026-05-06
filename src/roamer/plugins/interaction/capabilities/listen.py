@@ -12,6 +12,7 @@ import numpy as np
 import roamer.plugins.interaction.drivers.speech  # noqa: F401
 from roamer.platform.config import get_driver_config, get_driver_name
 from roamer.platform.contract import ErrorCode
+from roamer.platform.logging import log_event
 from roamer.platform.output import error, success
 from roamer.plugins.interaction.capabilities.audio import AudioCapability
 from roamer.plugins.interaction.capabilities.base import Capability
@@ -236,6 +237,18 @@ class ListenCapability(Capability):
             )
             if endpoint_metrics is not None:
                 response["endpoint_metrics"] = endpoint_metrics
+            logging_cfg = self.config.get("logging", {})
+            log_event(
+                "listen",
+                "asr_transcript",
+                text=asr_result.get("text", "")
+                if bool(logging_cfg.get("log_transcripts", True))
+                else "",
+                confidence=asr_result.get("confidence"),
+                duration_sec=end_time - start_time,
+                audio_path=audio_path if bool(logging_cfg.get("log_audio_paths", False)) else None,
+                endpoint_metrics=endpoint_metrics,
+            )
             return response
         finally:
             try:

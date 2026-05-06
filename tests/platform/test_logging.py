@@ -6,6 +6,7 @@ import json
 import time
 from pathlib import Path
 
+import roamer.platform.logging as logging_module
 from roamer.platform.logging import log_event, mask_sensitive_value, setup_logging
 
 
@@ -66,5 +67,30 @@ def test_setup_logging_removes_logs_older_than_retention(tmp_path: Path) -> None
             }
         }
     )
+
+    assert not old_log.exists()
+
+
+def test_log_event_periodically_removes_expired_logs(tmp_path: Path) -> None:
+    setup_logging(
+        {
+            "logging": {
+                "enabled": True,
+                "dir": str(tmp_path),
+                "max_bytes": 100_000,
+                "backup_count": 2,
+                "retention_days": 3,
+            }
+        }
+    )
+    old_log = tmp_path / "roamer.log.8"
+    old_log.write_text("old", encoding="utf-8")
+    old_time = time.time() - (4 * 24 * 60 * 60)
+    import os
+
+    os.utime(old_log, (old_time, old_time))
+    logging_module._NEXT_CLEANUP_AT = 0
+
+    log_event("serve", "request", command="ping")
 
     assert not old_log.exists()

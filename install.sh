@@ -32,6 +32,7 @@ service_name="${ROAMER_SERVICE_NAME:-roamer-serve.service}"
 service_src="$repo_dir/systemd/roamer-serve.service"
 service_dst="/etc/systemd/system/$service_name"
 dropin_dir="/etc/systemd/system/$service_name.d"
+log_dir="${ROAMER_LOG_DIR:-/var/log/roamer}"
 wake_service_name="${ROAMER_WAKE_SERVICE_NAME:-roamer-wake.service}"
 wake_service_src="$repo_dir/systemd/roamer-wake.service"
 wake_service_dst="/etc/systemd/system/$wake_service_name"
@@ -72,6 +73,9 @@ fi
 
 log "linking /usr/local/bin/roamer to venv entrypoint"
 sudo ln -sfn "$venv_dir/bin/roamer" /usr/local/bin/roamer
+
+log "creating runtime log directory $log_dir"
+sudo install -d -m 0750 -o "$roamer_user" -g "$roamer_user" "$log_dir"
 
 log "running proxy discovery to refresh $user_env_file"
 sudo -u "$roamer_user" env HOME="$roamer_home" ROAMER_ENV_FILE="$user_env_file" \

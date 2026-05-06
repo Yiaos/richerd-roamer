@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from roamer.platform.contract import ErrorCode
+from roamer.platform.logging import log_event
 from roamer.platform.output import error, success
 from roamer.platform.runtime import run_action
 from roamer.plugins.interaction.capabilities.base import Capability
@@ -100,6 +101,15 @@ class WakeCapability(Capability):
                 phrases = list(wake_cfg.get("phrases") or ["richard", "rich erd", "瑞彻德"])
                 match = match_wake_phrase(text, phrases)
                 in_followup = self._in_followup()
+                log_event(
+                    "wake",
+                    "asr_transcript",
+                    text=text,
+                    matched=bool(match.matched),
+                    phrase=match.phrase,
+                    command_text=match.command_text if match.matched else "",
+                    in_followup=in_followup,
+                )
                 if not match.matched and not in_followup:
                     continue
 
