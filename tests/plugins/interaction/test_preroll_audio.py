@@ -113,6 +113,26 @@ def test_exhausted_source_reports_not_running_after_reader_stops() -> None:
     assert source.running is False
 
 
+def test_reader_error_is_exposed_after_background_failure() -> None:
+    def chunks():
+        yield b"a"
+        raise OSError("usb audio disconnected")
+
+    source = PreRollAudioSource(
+        chunk_source=chunks(),
+        chunk_duration_sec=0.01,
+        pre_roll_sec=0.1,
+    )
+    source.start()
+    deadline = time.monotonic() + 1.0
+    while source.running and time.monotonic() < deadline:
+        time.sleep(0.001)
+
+    assert source.running is False
+    assert isinstance(source.reader_error, OSError)
+    assert source.healthy is False
+
+
 def test_stop_closes_underlying_chunk_generator() -> None:
     closed = False
 

@@ -238,3 +238,27 @@ def test_serve_runtime_logs_request(monkeypatch) -> None:
     assert ("serve", "request") == events[0][:2]
     assert events[0][2]["command"] == "ping"
     assert events[0][2]["ok"] is True
+
+
+def test_serve_runtime_sets_request_id_for_nested_actions(monkeypatch) -> None:
+    from roamer.platform.logging import current_request_id
+
+    request_ids = []
+    runtime = RoamerServeRuntime(
+        {
+            "converse": {
+                "endpoint": {"mode": "fixed"},
+            }
+        }
+    )
+    monkeypatch.setattr(runtime, "ensure_registered", lambda: None)
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.services.serve.run_action",
+        lambda _name, **_kwargs: request_ids.append(current_request_id()) or {"ok": True},
+    )
+
+    result = runtime.handle({"command": "converse", "request_id": "req-serve-1", "args": {}})
+
+    assert result["ok"] is True
+    assert result["request_id"] == "req-serve-1"
+    assert request_ids == ["req-serve-1"]

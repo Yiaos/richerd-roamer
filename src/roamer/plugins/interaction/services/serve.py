@@ -6,11 +6,12 @@ import os
 import socket
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
 from roamer.platform.contract import ErrorCode
-from roamer.platform.logging import log_event
+from roamer.platform.logging import log_event, request_context
 from roamer.platform.output import error, success
 from roamer.platform.plugin_registry import registry
 from roamer.platform.runtime import run_action
@@ -71,6 +72,14 @@ class RoamerServeRuntime:
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         """Handle one decoded serve request."""
+        request_id = str(request.get("request_id") or uuid.uuid4().hex[:12])
+        with request_context(request_id):
+            result = self._handle(request)
+        result.setdefault("request_id", request_id)
+        return result
+
+    def _handle(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle one decoded serve request inside an active request context."""
         started_at = time.monotonic()
         command = str(request.get("command") or "")
         args = request.get("args") or {}

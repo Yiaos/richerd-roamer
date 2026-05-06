@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from roamer.platform.contract import ErrorCode
-from roamer.platform.logging import log_event
+from roamer.platform.logging import log_event, request_context
 from roamer.platform.output import error, success
 from roamer.platform.runtime import run_action
 from roamer.plugins.interaction.capabilities.base import Capability
@@ -67,6 +67,21 @@ class WakeCapability(Capability):
                 if wait_timeout is not None and wait_timeout <= 0:
                     return success(completed=True, timeout=True, turns=[])
 
+                try:
+                    pre_roll_source = self._ensure_preroll_source(pre_roll_source)
+                except FileNotFoundError:
+                    return error(
+                        "audio_record_failed",
+                        "Wake audio unavailable: arecord not installed",
+                        error_code=ErrorCode.DEPENDENCY_AUDIO_ARECORD_MISSING,
+                    )
+                except Exception as exc:
+                    return error(
+                        "audio_record_failed",
+                        f"Wake audio unavailable: {exc}",
+                        error_code=ErrorCode.AUDIO_RECORD_COMMAND_FAILED,
+                    )
+
                 if not self._in_followup():
                     try:
                         triggered = self._wait_for_trigger(wait_timeout)
@@ -83,68 +98,72 @@ class WakeCapability(Capability):
                             return success(completed=True, reason="wake_timeout", turns=[])
                         continue
 
-                record_timeout = None if pre_roll_source is not None else wait_timeout
-                listen_result = self._listen_once(
-                    timeout=record_timeout,
-                    pre_roll_source=pre_roll_source,
-                )
-                if not listen_result.get("ok"):
+                with request_context(uuid.uuid4().hex[:12]):
+                    record_timeout = None if pre_roll_source is not None else wait_timeout
+                    listen_result = self._listen_once(
+                        timeout=record_timeout,
+                        pre_roll_source=pre_roll_source,
+                    )
+                    if not listen_result.get("ok"):
+                        if once:
+                            return success(
+                                completed=True,
+                                turns=[{"stage": "listen", "ok": False, **listen_result}],
+                                listen=listen_result,
+                            )
+                        continue
+
+                    text = str(listen_result.get("text") or "").strip()
+                    if not text:
+                        continue
+                    wake_cfg = self.config.get("converse", {}).get("wakeword", {})
+                    logging_cfg = self.config.get("logging", {})
+                    phrases = list(wake_cfg.get("phrases") or ["richard", "rich erd", "瑞彻德"])
+                    match = match_wake_phrase(text, phrases)
+                    in_followup = self._in_followup()
+                    log_transcripts = bool(logging_cfg.get("log_transcripts", True))
+                    command_text_log = (
+                        match.command_text if match.matched and log_transcripts else ""
+                    )
+                    log_event(
+                        "wake",
+                        "asr_transcript",
+                        text=text if log_transcripts else "",
+                        matched=bool(match.matched),
+                        phrase=match.phrase,
+                        command_text=command_text_log,
+                        in_followup=in_followup,
+                    )
+                    if not match.matched and not in_followup:
+                        continue
+
+                    command_text = match.command_text if match.matched else text
+                    if match.matched and self._is_wake_phrase_only(command_text, phrases):
+                        self._enter_followup()
+                        continue
+                    if not command_text:
+                        self._enter_followup()
+                        continue
+
+                    self._turn_id += 1
+                    turn = self._route_text(
+                        text=command_text,
+                        session_id=session_id,
+                        turn_id=self._turn_id,
+                        no_sound=no_sound,
+                        allow_fallback=bool(match.matched),
+                    )
+                    if not turn.get("ok", True):
+                        intent_result = turn.get("intent_result")
+                        if isinstance(intent_result, dict):
+                            return dict(intent_result)
+                        return dict(turn)
+                    if pre_roll_source is not None:
+                        pre_roll_source.clear()
+                    if turn.get("route") != "ignored":
+                        self._enter_followup()
                     if once:
-                        return success(
-                            completed=True,
-                            turns=[{"stage": "listen", "ok": False, **listen_result}],
-                            listen=listen_result,
-                        )
-                    continue
-
-                text = str(listen_result.get("text") or "").strip()
-                if not text:
-                    continue
-                wake_cfg = self.config.get("converse", {}).get("wakeword", {})
-                logging_cfg = self.config.get("logging", {})
-                phrases = list(wake_cfg.get("phrases") or ["richard", "rich erd", "瑞彻德"])
-                match = match_wake_phrase(text, phrases)
-                in_followup = self._in_followup()
-                log_transcripts = bool(logging_cfg.get("log_transcripts", True))
-                log_event(
-                    "wake",
-                    "asr_transcript",
-                    text=text if log_transcripts else "",
-                    matched=bool(match.matched),
-                    phrase=match.phrase,
-                    command_text=match.command_text if match.matched and log_transcripts else "",
-                    in_followup=in_followup,
-                )
-                if not match.matched and not in_followup:
-                    continue
-
-                command_text = match.command_text if match.matched else text
-                if match.matched and self._is_wake_phrase_only(command_text, phrases):
-                    self._enter_followup()
-                    continue
-                if not command_text:
-                    self._enter_followup()
-                    continue
-
-                self._turn_id += 1
-                turn = self._route_text(
-                    text=command_text,
-                    session_id=session_id,
-                    turn_id=self._turn_id,
-                    no_sound=no_sound,
-                    allow_fallback=bool(match.matched),
-                )
-                if not turn.get("ok", True):
-                    intent_result = turn.get("intent_result")
-                    if isinstance(intent_result, dict):
-                        return dict(intent_result)
-                    return dict(turn)
-                if pre_roll_source is not None:
-                    pre_roll_source.clear()
-                if turn.get("route") != "ignored":
-                    self._enter_followup()
-                if once:
-                    return success(completed=True, turns=[turn], wake_match=match.matched)
+                        return success(completed=True, turns=[turn], wake_match=match.matched)
         finally:
             if pre_roll_source is not None:
                 pre_roll_source.stop()
@@ -197,6 +216,26 @@ class WakeCapability(Capability):
             return bool(driver.wait_hit(timeout=float(timeout if timeout is not None else 1.0)))
         finally:
             driver.stop()
+
+    def _ensure_preroll_source(
+        self, pre_roll_source: PreRollAudioSource | None
+    ) -> PreRollAudioSource | None:
+        if pre_roll_source is None:
+            return None
+        if bool(getattr(pre_roll_source, "healthy", False)):
+            return pre_roll_source
+
+        reader_error = getattr(pre_roll_source, "reader_error", None)
+        try:
+            pre_roll_source.stop()
+        finally:
+            log_event(
+                "wake",
+                "preroll_restart",
+                reason="reader_unhealthy",
+                reader_error=str(reader_error) if reader_error else None,
+            )
+        return self._start_preroll_source_if_needed()
 
     def _listen_once(
         self,

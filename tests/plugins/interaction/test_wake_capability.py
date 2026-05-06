@@ -3,6 +3,7 @@
 from unittest.mock import Mock
 
 from roamer.platform.contract import ErrorCode
+from roamer.platform.logging import current_request_id
 from roamer.plugins.interaction.capabilities.wake import WakeCapability
 
 
@@ -139,6 +140,50 @@ def test_wake_preroll_recording_uses_endpoint_window_after_trigger() -> None:
 
     assert result["ok"] is True
     assert cap._listen_once.call_args.kwargs["timeout"] is None
+
+
+def test_wake_restarts_dead_preroll_source_before_recording() -> None:
+    dead_source = Mock()
+    dead_source.healthy = False
+    live_source = Mock()
+    live_source.healthy = True
+
+    cap = WakeCapability(_config())
+    cap._start_preroll_source_if_needed = Mock(side_effect=[dead_source, live_source])
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._listen_once = Mock(return_value={"ok": True, "text": "Richard 现在几点了"})
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "local"})
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    assert cap._start_preroll_source_if_needed.call_count == 2
+    dead_source.stop.assert_called_once()
+    assert cap._listen_once.call_args.kwargs["pre_roll_source"] is live_source
+
+
+def test_wake_uses_one_request_id_for_listen_and_route() -> None:
+    request_ids = []
+    cap = WakeCapability(_config())
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._start_preroll_source_if_needed = Mock(return_value=None)
+
+    def _listen_once(**_kwargs):
+        request_ids.append(current_request_id())
+        return {"ok": True, "text": "Richard 现在几点了"}
+
+    def _route_text(**_kwargs):
+        request_ids.append(current_request_id())
+        return {"turn_id": 1, "route": "local"}
+
+    cap._listen_once = Mock(side_effect=_listen_once)
+    cap._route_text = Mock(side_effect=_route_text)
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    assert request_ids[0]
+    assert request_ids == [request_ids[0], request_ids[0]]
 
 
 def test_wake_once_waits_for_followup_command_after_wake_phrase_only() -> None:

@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 import logging as py_logging
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -17,6 +20,7 @@ _CLEANUP_INTERVAL_SEC = 60 * 60
 _ACTIVE_LOG_DIR: Path | None = None
 _ACTIVE_RETENTION_DAYS = 3
 _NEXT_CLEANUP_AT = 0.0
+_REQUEST_ID: ContextVar[str | None] = ContextVar("roamer_request_id", default=None)
 
 
 class _JsonLineFormatter(py_logging.Formatter):
@@ -126,12 +130,30 @@ def setup_logging(config: dict[str, Any]) -> None:
     logger.propagate = False
 
 
+def current_request_id() -> str | None:
+    """Return the active request id for the current execution context."""
+    return _REQUEST_ID.get()
+
+
+@contextmanager
+def request_context(request_id: str) -> Iterator[None]:
+    """Attach a request id to all log events emitted in this context."""
+    token = _REQUEST_ID.set(str(request_id))
+    try:
+        yield
+    finally:
+        _REQUEST_ID.reset(token)
+
+
 def log_event(component: str, event: str, *, level: str = "INFO", **fields: Any) -> None:
     """Write one structured runtime event if logging has been configured."""
     logger = py_logging.getLogger(_LOGGER_NAME)
     if not logger.handlers:
         return
     _maybe_cleanup_old_logs()
+    request_id = current_request_id()
+    if request_id and "request_id" not in fields:
+        fields = {"request_id": request_id, **fields}
     payload = {
         "component": component,
         "event": event,

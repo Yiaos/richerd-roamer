@@ -30,6 +30,7 @@ class PreRollAudioSource:
         self._running = False
         self._lock = threading.RLock()
         self._capture_count = 0
+        self._reader_error: BaseException | None = None
 
     def start(self) -> None:
         """Start background capture resources.
@@ -40,6 +41,7 @@ class PreRollAudioSource:
         if self._thread is not None:
             return
         self._stop.clear()
+        self._reader_error = None
         self._running = True
         self._thread = threading.Thread(target=self._read_loop, daemon=True)
         self._thread.start()
@@ -58,6 +60,16 @@ class PreRollAudioSource:
     def running(self) -> bool:
         """Whether the background reader is expected to be alive."""
         return bool(self._running and self._thread is not None and self._thread.is_alive())
+
+    @property
+    def reader_error(self) -> BaseException | None:
+        """Exception that stopped the background reader, if any."""
+        return self._reader_error
+
+    @property
+    def healthy(self) -> bool:
+        """Whether live capture is running without a reader failure."""
+        return self.running and self._reader_error is None
 
     def snapshot(self) -> list[bytes]:
         """Return buffered pre-roll chunks in playback order."""
@@ -120,6 +132,8 @@ class PreRollAudioSource:
                 with self._lock:
                     self._buffer.append(chunk)
                 self._put_live_chunk(chunk)
+        except Exception as exc:
+            self._reader_error = exc
         finally:
             self._running = False
 
