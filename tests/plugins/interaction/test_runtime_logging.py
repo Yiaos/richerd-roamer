@@ -125,6 +125,62 @@ def test_wake_does_not_log_empty_transcript(monkeypatch) -> None:
 
     assert result["ok"] is True
     assert all(event != "asr_transcript" for _component, event, _fields in events)
+    ignored = _event(events, "route_ignored")
+    assert ignored[2]["reason"] == "empty_transcript"
+    assert ignored[2]["text"] == ""
+
+
+def test_wake_logs_unmatched_transcript_as_ignored(monkeypatch) -> None:
+    events = []
+    cap = WakeCapability(_converse_config())
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._start_preroll_source_if_needed = Mock(return_value=None)
+    cap._listen_once = Mock(
+        side_effect=[
+            {"ok": True, "text": "车的，现在几点了？"},
+            {"ok": True, "text": "瑞彻德 现在几点了"},
+        ]
+    )
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "local", "action": "time.now"})
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.capabilities.wake.log_event",
+        lambda component, event, **fields: events.append((component, event, fields)),
+    )
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    ignored = _event(events, "route_ignored")
+    assert ignored[2]["reason"] == "wake_phrase_not_matched"
+    assert ignored[2]["text"] == "车的，现在几点了？"
+    assert ignored[2]["matched"] is False
+    assert ignored[2]["in_followup"] is False
+
+
+def test_wake_logs_wake_phrase_only_as_ignored(monkeypatch) -> None:
+    events = []
+    cap = WakeCapability(_converse_config())
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._start_preroll_source_if_needed = Mock(return_value=None)
+    cap._listen_once = Mock(
+        side_effect=[
+            {"ok": True, "text": "瑞彻德"},
+            {"ok": True, "text": "现在几点了"},
+        ]
+    )
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "local", "action": "time.now"})
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.capabilities.wake.log_event",
+        lambda component, event, **fields: events.append((component, event, fields)),
+    )
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    ignored = _event(events, "route_ignored")
+    assert ignored[2]["reason"] == "wake_phrase_only"
+    assert ignored[2]["matched"] is True
+    assert ignored[2]["in_followup"] is False
 
 
 def test_converse_logs_route_decision(monkeypatch) -> None:

@@ -171,15 +171,24 @@ class WakeCapability(Capability):
                             )
                         continue
 
-                    text = str(listen_result.get("text") or "").strip()
-                    if not text:
-                        continue
                     wake_cfg = self.config.get("converse", {}).get("wakeword", {})
                     logging_cfg = self.config.get("logging", {})
                     phrases = list(wake_cfg.get("phrases") or ["richard", "rich erd", "瑞彻德"])
+                    log_transcripts = bool(logging_cfg.get("log_transcripts", True))
+                    text = str(listen_result.get("text") or "").strip()
+                    if not text:
+                        log_event(
+                            "wake",
+                            "route_ignored",
+                            session_id=session_id,
+                            reason="empty_transcript",
+                            text="",
+                            matched=False,
+                            in_followup=self._in_followup(),
+                        )
+                        continue
                     match = match_wake_phrase(text, phrases)
                     in_followup = self._in_followup()
-                    log_transcripts = bool(logging_cfg.get("log_transcripts", True))
                     command_text_log = (
                         match.command_text if match.matched and log_transcripts else ""
                     )
@@ -193,13 +202,42 @@ class WakeCapability(Capability):
                         in_followup=in_followup,
                     )
                     if not match.matched and not in_followup:
+                        log_event(
+                            "wake",
+                            "route_ignored",
+                            session_id=session_id,
+                            reason="wake_phrase_not_matched",
+                            text=text if log_transcripts else "",
+                            matched=False,
+                            in_followup=in_followup,
+                        )
                         continue
 
                     command_text = match.command_text if match.matched else text
                     if match.matched and self._is_wake_phrase_only(command_text, phrases):
+                        log_event(
+                            "wake",
+                            "route_ignored",
+                            session_id=session_id,
+                            reason="wake_phrase_only",
+                            text=command_text if log_transcripts else "",
+                            matched=True,
+                            phrase=match.phrase,
+                            in_followup=in_followup,
+                        )
                         self._enter_followup()
                         continue
                     if not command_text:
+                        log_event(
+                            "wake",
+                            "route_ignored",
+                            session_id=session_id,
+                            reason="empty_command",
+                            text="",
+                            matched=bool(match.matched),
+                            phrase=match.phrase,
+                            in_followup=in_followup,
+                        )
                         self._enter_followup()
                         continue
                     if self._is_too_short_asr_text(command_text):
