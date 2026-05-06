@@ -191,6 +191,25 @@ SU-03T GND  -> Raspberry Pi GND, physical pin 6
 SU-03T OUT  -> Raspberry Pi GPIO17 / BCM17, physical pin 11
 ```
 
+Hardware wiring diagram:
+
+```text
+              Raspberry Pi GPIO header
+              +------------------------------+
+              | pin 2/4  5V  ---------------+--> SU-03T VCC
+              | pin 6    GND ---------------+--> SU-03T GND
+              | pin 11   GPIO17 / BCM17 <---+--- SU-03T OUT
+              +------------------------------+
+
+              SU-03T module
+              +------------------------------+
+              | VCC  input: use Pi 5V        |
+              | GND  common ground           |
+              | OUT  3.3V logic wake signal  |
+              | 3V3  regulated output only   |
+              +------------------------------+
+```
+
 `SU-03T 3V3` is the module's regulated 3.3V output, not the normal supply input
 for this setup. Confirm the OUT pin is 3.3V logic before connecting it to GPIO17.
 
