@@ -4,6 +4,7 @@ import os
 import tempfile
 import time
 import wave
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -18,11 +19,13 @@ from roamer.platform.output import error, success
 from roamer.plugins.interaction.capabilities.audio import AudioCapability
 from roamer.plugins.interaction.capabilities.base import Capability
 from roamer.plugins.interaction.drivers.registry import get_driver
+from roamer.plugins.interaction.drivers.speech.stt.vllm_realtime import VllmRealtimeSTTProvider
 from roamer.plugins.interaction.services.endpointing import (
     ChunkVadAdapter,
     EndpointConfig,
     EndpointRecorder,
 )
+from roamer.plugins.interaction.services.realtime_listen import RealtimeEndpointTranscriber
 
 
 class ListenCapability(Capability):
@@ -102,6 +105,14 @@ class ListenCapability(Capability):
         try:
             # Record audio
             if use_endpointing:
+                realtime_result = self._listen_realtime_if_configured(
+                    timeout=timeout,
+                    save_audio=save_audio,
+                    debug=debug,
+                )
+                if realtime_result is not None:
+                    return realtime_result
+
                 endpoint_config = EndpointConfig.from_config(self.config, timeout=timeout)
                 log(f"Endpoint recording to {audio_path}: {endpoint_config}")
                 try:
@@ -308,6 +319,87 @@ class ListenCapability(Capability):
                 Path(trimmed_path).unlink(missing_ok=True)
             except Exception:
                 pass
+
+    def _listen_realtime_if_configured(
+        self,
+        *,
+        timeout: float,
+        save_audio: str | None = None,
+        debug: bool = False,
+    ) -> dict[str, Any] | None:
+        stt_cfg = self.config.get("converse", {}).get("stt", {})
+        mode = str(stt_cfg.get("mode") or "batch")
+        if mode not in {"realtime", "realtime_with_batch_fallback"}:
+            return None
+        provider_name = str(stt_cfg.get("provider") or "vllm_realtime")
+        if provider_name != "vllm_realtime":
+            return None
+
+        endpoint_config = EndpointConfig.from_config(self.config, timeout=timeout)
+        if "chunk_duration_sec" in stt_cfg:
+            endpoint_config = replace(
+                endpoint_config,
+                chunk_duration_sec=max(
+                    EndpointConfig.chunk_duration_sec,
+                    float(stt_cfg["chunk_duration_sec"]),
+                ),
+            )
+        output_path = save_audio
+        fallback_enabled = (
+            mode == "realtime_with_batch_fallback" or stt_cfg.get("fallback") == "batch"
+        )
+
+        def fallback_transcribe(
+            path: str, endpoint_metrics: dict[str, Any] | None
+        ) -> dict[str, Any]:
+            return self.transcribe_audio_file(
+                path,
+                save_audio=save_audio,
+                debug=debug,
+                endpoint_metrics=endpoint_metrics,
+            )
+
+        try:
+            chunk_source = self._audio.stream_chunks(
+                chunk_duration_sec=endpoint_config.chunk_duration_sec,
+                max_duration_sec=endpoint_config.max_record_sec,
+            )
+        except NotImplementedError as exc:
+            return error(
+                "audio_record_failed",
+                str(exc),
+                error_code=ErrorCode.AUDIO_RECORD_COMMAND_FAILED,
+            )
+        except FileNotFoundError:
+            return error(
+                "audio_record_failed",
+                "arecord not installed",
+                error_code=ErrorCode.DEPENDENCY_AUDIO_ARECORD_MISSING,
+            )
+        except OSError as exc:
+            return error(
+                "audio_record_failed",
+                "Endpoint recording failed",
+                details=str(exc),
+                error_code=ErrorCode.AUDIO_RECORD_COMMAND_FAILED,
+            )
+
+        transcriber = RealtimeEndpointTranscriber(
+            chunk_source=chunk_source,
+            vad_probability=ChunkVadAdapter(
+                self._vad,
+                threshold=endpoint_config.threshold,
+            ).probability,
+            endpoint_config=endpoint_config,
+            provider=VllmRealtimeSTTProvider({**stt_cfg, "provider": provider_name}),
+            output_path=output_path,
+            response_timeout_sec=float(stt_cfg.get("response_timeout_sec", 20.0)),
+            fallback_transcribe=fallback_transcribe if fallback_enabled else None,
+        )
+        result = transcriber.transcribe()
+        if result.get("ok"):
+            result.setdefault("audio_path", output_path if save_audio else None)
+        return result
 
     def _log_audio_path(self, path: str | None) -> str | None:
         logging_cfg = self.config.get("logging", {})

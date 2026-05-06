@@ -101,6 +101,9 @@ def test_default_config_includes_serve_and_endpoint_defaults(tmp_path, monkeypat
     assert config["logging"]["log_audio_paths"] is False
     assert config["converse"]["endpoint"]["mode"] == "vad_endpoint"
     assert config["converse"]["endpoint"]["silence_sec"] == 2.0
+    assert config["converse"]["stt"]["mode"] == "batch"
+    assert config["converse"]["stt"]["provider"] == "vllm_realtime"
+    assert config["converse"]["stt"]["model"] == "qwen3-asr-0.6b"
 
 
 def test_default_su03t_wakeword_config() -> None:

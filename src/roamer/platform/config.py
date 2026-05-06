@@ -128,6 +128,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "max_record_sec": 10.0,
             "pre_speech_padding_sec": 0.3,
         },
+        "stt": {
+            "mode": "batch",
+            "provider": "vllm_realtime",
+            "url": "ws://hurricane.tail33ee82.ts.net:8302/v1/realtime",
+            "model": "qwen3-asr-0.6b",
+            "chunk_duration_sec": 0.1,
+            "response_timeout_sec": 20.0,
+            "fallback": "batch",
+        },
         "discord": {
             "enabled": False,
             "channel_id": "",

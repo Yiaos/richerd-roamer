@@ -6,6 +6,7 @@ import time
 import uuid
 from collections.abc import Callable
 from contextlib import nullcontext
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -17,12 +18,14 @@ from roamer.plugins.interaction.capabilities.base import Capability
 from roamer.plugins.interaction.capabilities.converse import ConverseCapability
 from roamer.plugins.interaction.capabilities.listen import ListenCapability
 from roamer.plugins.interaction.drivers.registry import get_driver
+from roamer.plugins.interaction.drivers.speech.stt.vllm_realtime import VllmRealtimeSTTProvider
 from roamer.plugins.interaction.services.endpointing import (
     ChunkVadAdapter,
     EndpointConfig,
     EndpointRecorder,
 )
 from roamer.plugins.interaction.services.preroll_audio import PreRollAudioSource
+from roamer.plugins.interaction.services.realtime_listen import RealtimeEndpointTranscriber
 from roamer.plugins.interaction.services.wake_phrases import match_wake_phrase
 
 
@@ -341,6 +344,15 @@ class WakeCapability(Capability):
         endpoint_config = EndpointConfig.from_config(self.config, timeout=timeout)
         audio_path = listener._create_temp_audio("roamer_wake_")
         try:
+            realtime_result = self._listen_preroll_realtime_if_configured(
+                listener=listener,
+                endpoint_config=endpoint_config,
+                audio_path=audio_path,
+                pre_roll_source=pre_roll_source,
+            )
+            if realtime_result is not None:
+                return realtime_result
+
             recorder = EndpointRecorder(
                 chunk_source=pre_roll_source.capture_iter(
                     max_duration_sec=endpoint_config.max_record_sec
@@ -366,6 +378,60 @@ class WakeCapability(Capability):
                 Path(audio_path).unlink(missing_ok=True)
             except Exception:
                 pass
+
+    def _listen_preroll_realtime_if_configured(
+        self,
+        *,
+        listener: ListenCapability,
+        endpoint_config: EndpointConfig,
+        audio_path: str,
+        pre_roll_source: PreRollAudioSource,
+    ) -> dict[str, Any] | None:
+        stt_cfg = self.config.get("converse", {}).get("stt", {})
+        mode = str(stt_cfg.get("mode") or "batch")
+        if mode not in {"realtime", "realtime_with_batch_fallback"}:
+            return None
+        provider_name = str(stt_cfg.get("provider") or "vllm_realtime")
+        if provider_name != "vllm_realtime":
+            return None
+        if "chunk_duration_sec" in stt_cfg:
+            endpoint_config = replace(
+                endpoint_config,
+                chunk_duration_sec=max(
+                    EndpointConfig.chunk_duration_sec,
+                    float(stt_cfg["chunk_duration_sec"]),
+                ),
+            )
+
+        fallback_enabled = (
+            mode == "realtime_with_batch_fallback" or stt_cfg.get("fallback") == "batch"
+        )
+
+        def fallback_transcribe(
+            path: str, endpoint_metrics: dict[str, Any] | None
+        ) -> dict[str, Any]:
+            return listener.transcribe_audio_file(
+                path,
+                save_audio=None,
+                debug=False,
+                endpoint_metrics=endpoint_metrics,
+            )
+
+        transcriber = RealtimeEndpointTranscriber(
+            chunk_source=pre_roll_source.capture_iter(
+                max_duration_sec=endpoint_config.max_record_sec
+            ),
+            vad_probability=ChunkVadAdapter(
+                listener._vad,
+                threshold=endpoint_config.threshold,
+            ).probability,
+            endpoint_config=endpoint_config,
+            provider=VllmRealtimeSTTProvider({**stt_cfg, "provider": provider_name}),
+            output_path=audio_path,
+            response_timeout_sec=float(stt_cfg.get("response_timeout_sec", 20.0)),
+            fallback_transcribe=fallback_transcribe if fallback_enabled else None,
+        )
+        return transcriber.transcribe()
 
     def _start_preroll_source_if_needed(self) -> PreRollAudioSource | None:
         if getattr(self._listen_once, "__func__", None) is not WakeCapability._listen_once:

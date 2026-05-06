@@ -1,6 +1,6 @@
 """Tests for SU-03T wake capability."""
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from roamer.platform.contract import ErrorCode
 from roamer.platform.logging import current_request_id
@@ -140,6 +140,52 @@ def test_wake_preroll_recording_uses_endpoint_window_after_trigger() -> None:
 
     assert result["ok"] is True
     assert cap._listen_once.call_args.kwargs["timeout"] is None
+
+
+def test_wake_preroll_uses_realtime_transcriber_when_configured() -> None:
+    config = _config()
+    config["converse"]["stt"] = {
+        "mode": "realtime_with_batch_fallback",
+        "provider": "vllm_realtime",
+        "url": "ws://example.test/v1/realtime",
+        "model": "qwen3-asr-0.6b",
+        "response_timeout_sec": 7.0,
+    }
+    config["alsa"] = {"sample_rate": 16000, "channels": 2}
+    config["silero"] = {"threshold": 0.5}
+    pre_roll = Mock()
+    pre_roll.capture_iter.return_value = iter([b"\x00\x00"])
+    provider = Mock()
+    transcriber = Mock()
+    transcriber.transcribe.return_value = {"ok": True, "text": "Richard 现在几点了"}
+    listener = Mock()
+    listener._vad = Mock()
+
+    cap = WakeCapability(config)
+    with patch(
+        "roamer.plugins.interaction.capabilities.wake.ListenCapability",
+        return_value=listener,
+    ):
+        with patch(
+            "roamer.plugins.interaction.capabilities.wake.VllmRealtimeSTTProvider",
+            return_value=provider,
+        ) as provider_cls:
+            with patch(
+                "roamer.plugins.interaction.capabilities.wake.RealtimeEndpointTranscriber",
+                return_value=transcriber,
+            ) as transcriber_cls:
+                result = cap._listen_once_with_preroll(
+                    timeout=3.0,
+                    pre_roll_source=pre_roll,
+                )
+
+    assert result["ok"] is True
+    assert result["text"] == "Richard 现在几点了"
+    provider_cls.assert_called_once()
+    transcriber_cls.assert_called_once()
+    assert transcriber_cls.call_args.kwargs["provider"] is provider
+    assert transcriber_cls.call_args.kwargs["response_timeout_sec"] == 7.0
+    assert callable(transcriber_cls.call_args.kwargs["fallback_transcribe"])
 
 
 def test_wake_restarts_dead_preroll_source_before_recording() -> None:
