@@ -80,6 +80,45 @@ def test_wake_service_mode_keeps_polling_after_empty_timeout() -> None:
     assert cap._wait_for_trigger.call_count == 2
 
 
+def test_wake_service_mode_waits_for_gpio_without_timeout() -> None:
+    cap = WakeCapability(_config())
+    timeouts = []
+
+    def _wait_for_trigger(timeout):
+        timeouts.append(timeout)
+        return True
+
+    cap._wait_for_trigger = Mock(side_effect=_wait_for_trigger)
+    cap._listen_once = Mock(return_value={"ok": True, "text": "Richard 现在几点了"})
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "local"})
+
+    result = cap.run(once=True, timeout=None, no_sound=True)
+
+    assert result["ok"] is True
+    assert timeouts == [None]
+
+
+def test_wake_forwards_none_timeout_to_gpio_driver_for_blocking_wait() -> None:
+    cap = WakeCapability(_config())
+    timeouts = []
+
+    class _Driver:
+        def start(self):
+            return None
+
+        def stop(self):
+            return None
+
+        def wait_hit(self, timeout):
+            timeouts.append(timeout)
+            return True
+
+    with patch("roamer.plugins.interaction.capabilities.wake.get_driver", return_value=_Driver()):
+        assert cap._wait_for_trigger(timeout=None) is True
+
+    assert timeouts == [None]
+
+
 def test_wake_throttles_repeated_triggers_at_capability_level() -> None:
     now = [100.0]
     cap = WakeCapability(_config(), clock=lambda: now[0])

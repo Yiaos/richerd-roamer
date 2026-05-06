@@ -290,7 +290,8 @@ class WakeCapability(Capability):
         driver = get_driver("wakeword", driver_name, wake_cfg)
         driver.start()
         try:
-            return bool(driver.wait_hit(timeout=float(timeout if timeout is not None else 1.0)))
+            wait_timeout = None if timeout is None else float(timeout)
+            return bool(driver.wait_hit(timeout=wait_timeout))
         finally:
             driver.stop()
 

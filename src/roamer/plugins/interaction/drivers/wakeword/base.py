@@ -21,5 +21,5 @@ class WakewordDriver(ABC):
         """Stop wakeword detection loop/resources."""
 
     @abstractmethod
-    def wait_hit(self, timeout: float) -> bool:
-        """Wait for wakeword hit until timeout, returns True if hit."""
+    def wait_hit(self, timeout: float | None) -> bool:
+        """Wait for wakeword hit until timeout, or indefinitely when timeout is None."""

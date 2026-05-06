@@ -7,8 +7,10 @@ class FakeRequest:
     def __init__(self, events):
         self.events = list(events)
         self.released = False
+        self.wait_timeouts = []
 
     def wait_edge_events(self, timeout):
+        self.wait_timeouts.append(timeout)
         return bool(self.events)
 
     def read_edge_events(self):
@@ -40,6 +42,18 @@ def test_su03t_gpio_hit_with_fake_event() -> None:
         assert driver.wait_hit(timeout=0.01) is True
     finally:
         driver.stop()
+
+
+def test_su03t_gpio_allows_blocking_wait_without_timeout() -> None:
+    request = FakeRequest([object()])
+    driver = Su03tGpioDriver({"request_factory": lambda cfg: request})
+    driver.start()
+    try:
+        assert driver.wait_hit(timeout=None) is True
+    finally:
+        driver.stop()
+
+    assert request.wait_timeouts == [None]
 
 
 def test_su03t_gpio_ignores_second_event_inside_min_interval() -> None:
