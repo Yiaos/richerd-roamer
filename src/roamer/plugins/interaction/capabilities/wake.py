@@ -116,6 +116,9 @@ class WakeCapability(Capability):
                     continue
 
                 command_text = match.command_text if match.matched else text
+                if match.matched and self._is_wake_phrase_only(command_text, phrases):
+                    self._enter_followup()
+                    continue
                 if not command_text:
                     self._enter_followup()
                     continue
@@ -126,6 +129,7 @@ class WakeCapability(Capability):
                     session_id=session_id,
                     turn_id=self._turn_id,
                     no_sound=no_sound,
+                    allow_fallback=bool(match.matched),
                 )
                 if not turn.get("ok", True):
                     intent_result = turn.get("intent_result")
@@ -134,7 +138,8 @@ class WakeCapability(Capability):
                     return dict(turn)
                 if pre_roll_source is not None:
                     pre_roll_source.clear()
-                self._enter_followup()
+                if turn.get("route") != "ignored":
+                    self._enter_followup()
                 if once:
                     return success(completed=True, turns=[turn], wake_match=match.matched)
         finally:
@@ -162,6 +167,23 @@ class WakeCapability(Capability):
             return False
         self._last_trigger_at = now
         return True
+
+    def _is_wake_phrase_only(self, text: str, phrases: list[str]) -> bool:
+        remaining = str(text or "").strip()
+        if not remaining:
+            return True
+
+        matched = False
+        while remaining:
+            wake_match = match_wake_phrase(remaining, phrases)
+            if not wake_match.matched:
+                return False
+            matched = True
+            next_remaining = wake_match.command_text.strip()
+            if next_remaining == remaining:
+                return False
+            remaining = next_remaining
+        return matched
 
     def _wait_for_trigger(self, timeout: float | None) -> bool:
         wake_cfg = self.config.get("converse", {}).get("wakeword", {})
@@ -255,10 +277,12 @@ class WakeCapability(Capability):
         session_id: str,
         turn_id: int,
         no_sound: bool,
+        allow_fallback: bool,
     ) -> dict[str, Any]:
         return ConverseCapability(self.config).route_text(
             text,
             session_id=session_id,
             turn_id=turn_id,
             no_sound=no_sound,
+            allow_fallback=allow_fallback,
         )

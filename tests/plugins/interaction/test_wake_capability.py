@@ -145,6 +145,52 @@ def test_wake_once_waits_for_followup_command_after_wake_phrase_only() -> None:
     assert cap._listen_once.call_count == 2
     cap._route_text.assert_called_once()
     assert cap._route_text.call_args.kwargs["text"] == "现在几点了"
+    assert cap._route_text.call_args.kwargs["allow_fallback"] is False
+
+
+def test_wake_treats_repeated_wake_phrase_as_wake_only() -> None:
+    config = _config()
+    config["converse"]["wakeword"]["min_interval_sec"] = 0
+    cap = WakeCapability(config)
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._listen_once = Mock(
+        side_effect=[
+            {"ok": True, "text": "richard richard"},
+            {"ok": True, "text": "现在几点了"},
+        ]
+    )
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "local"})
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    cap._route_text.assert_called_once()
+    assert cap._route_text.call_args.kwargs["text"] == "现在几点了"
+    assert cap._route_text.call_args.kwargs["allow_fallback"] is False
+
+
+def test_wake_followup_unmatched_text_does_not_refresh_followup() -> None:
+    now = [100.0]
+    config = _config()
+    config["converse"]["wakeword"]["min_interval_sec"] = 0
+    config["converse"]["wakeword"]["followup_timeout_sec"] = 10.0
+    cap = WakeCapability(config, clock=lambda: now[0])
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._listen_once = Mock(
+        side_effect=[
+            {"ok": True, "text": "Richard"},
+            {"ok": True, "text": "嗯"},
+        ]
+    )
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "ignored"})
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    cap._route_text.assert_called_once()
+    assert cap._route_text.call_args.kwargs["text"] == "嗯"
+    assert cap._route_text.call_args.kwargs["allow_fallback"] is False
+    assert cap._followup_until == 110.0
 
 
 def test_wake_once_propagates_route_text_failure() -> None:

@@ -105,6 +105,7 @@ class ConverseCapability(Capability):
         session_id: str,
         turn_id: int,
         no_sound: bool,
+        allow_fallback: bool = True,
     ) -> dict[str, Any]:
         """Route already-transcribed text through converse intent/fallback handling."""
         converse_cfg = self.config.get("converse", {})
@@ -174,7 +175,7 @@ class ConverseCapability(Capability):
                 )
                 if action_result.get("ok"):
                     self._safe_speak(f"已执行 {action}", no_sound=no_sound)
-        else:
+        elif allow_fallback:
             fallback_result = self._fallback_via_discord(
                 text,
                 discord_cfg=discord_cfg,
@@ -182,6 +183,8 @@ class ConverseCapability(Capability):
                 turn_id=turn_id,
             )
             turn_info.update({"route": "discord", "fallback": fallback_result})
+        else:
+            turn_info.update({"route": "ignored", "reason": "fallback_disabled"})
 
         log_event(
             "converse",

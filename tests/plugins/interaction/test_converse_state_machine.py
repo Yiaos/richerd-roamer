@@ -117,6 +117,24 @@ def test_converse_route_text_reuses_discord_fallback_flow() -> None:
     assert result["matched"] is False
 
 
+def test_converse_route_text_can_suppress_discord_fallback() -> None:
+    cap = ConverseCapability(_base_config())
+
+    with patch("roamer.plugins.interaction.capabilities.converse.send_fallback") as fallback:
+        result = cap.route_text(
+            "嗯",
+            session_id="s1",
+            turn_id=1,
+            no_sound=True,
+            allow_fallback=False,
+        )
+
+    assert result["route"] == "ignored"
+    assert result["matched"] is False
+    assert result["reason"] == "fallback_disabled"
+    fallback.assert_not_called()
+
+
 def test_converse_listen_failure_returns_canonical_error() -> None:
     cap = ConverseCapability(_base_config())
 
