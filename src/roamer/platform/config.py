@@ -81,7 +81,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "logging": {
         "enabled": True,
         "level": "INFO",
-        "dir": "/var/log/roamer",
+        "dir": "logs",
         "max_bytes": 10 * 1024 * 1024,
         "backup_count": 10,
         "retention_days": 3,

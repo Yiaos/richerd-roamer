@@ -180,7 +180,7 @@ Roamer's production install on the Pi is expected to run from:
 - CLI symlink: `/usr/local/bin/roamer`
 - runtime env: `/home/richerd/.config/roamer/env`
 - systemd env: `/etc/roamer/roamer.env`
-- runtime log: `/var/log/roamer/roamer.log`
+- runtime log: `logs/roamer.log`
 - daemon: `roamer-serve.service`
 - hands-free wake: `roamer-wake.service`
 
@@ -264,7 +264,7 @@ The installer fails fast if required files or values are missing. It:
 - creates or reuses `/home/richerd/.venv/roamer`
 - installs Roamer with speech and GPIO dependencies
 - points `/usr/local/bin/roamer` at the virtualenv entrypoint
-- creates `/var/log/roamer` for structured runtime logs
+- creates `logs` for structured runtime logs
 - runs proxy discovery and keeps proxy values in `~/.config/roamer/env`
 - writes `/etc/roamer/roamer.env` for systemd without exposing secrets in git
 - installs drop-ins so `roamer-serve.service` runs as `richerd`, loads the env file, and can reach the user's PulseAudio session
@@ -284,8 +284,8 @@ roamer converse --no-wakeword --no-sound --timeout 2 --max-turns 1
 Runtime logs:
 
 ```bash
-tail -f /var/log/roamer/roamer.log
-find /var/log/roamer -maxdepth 1 -type f -name 'roamer.log*' -ls
+tail -f logs/roamer.log
+find logs -maxdepth 1 -type f -name 'roamer.log*' -ls
 ```
 
 Roamer writes JSONL runtime events for `serve`, `wake`, `listen`, `converse`, and

@@ -62,7 +62,7 @@ serve:
 logging:
   enabled: true
   level: INFO
-  dir: /var/log/roamer
+  dir: logs
   max_bytes: 10485760
   backup_count: 10
   retention_days: 3
