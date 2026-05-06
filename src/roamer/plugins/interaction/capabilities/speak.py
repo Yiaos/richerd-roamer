@@ -125,6 +125,8 @@ class SpeakCapability(Capability):
         cleanup_output = save_path is None
 
         try:
+            logging_cfg = self.config.get("logging", {})
+            log_text = text if bool(logging_cfg.get("log_transcripts", True)) else ""
             # Synthesize
             tts_result = self._tts.synthesize(text, output, style=style)
             if not tts_result.get("ok"):
@@ -149,7 +151,7 @@ class SpeakCapability(Capability):
                     log_event(
                         "speak",
                         "playback",
-                        text=text,
+                        text=log_text,
                         played=False,
                         play=True,
                         style=style,
@@ -168,7 +170,7 @@ class SpeakCapability(Capability):
             log_event(
                 "speak",
                 "playback",
-                text=text,
+                text=log_text,
                 played=played,
                 play=play,
                 style=style,

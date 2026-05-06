@@ -83,8 +83,9 @@ class WakeCapability(Capability):
                             return success(completed=True, reason="wake_timeout", turns=[])
                         continue
 
+                record_timeout = None if pre_roll_source is not None else wait_timeout
                 listen_result = self._listen_once(
-                    timeout=wait_timeout,
+                    timeout=record_timeout,
                     pre_roll_source=pre_roll_source,
                 )
                 if not listen_result.get("ok"):
@@ -100,16 +101,18 @@ class WakeCapability(Capability):
                 if not text:
                     continue
                 wake_cfg = self.config.get("converse", {}).get("wakeword", {})
+                logging_cfg = self.config.get("logging", {})
                 phrases = list(wake_cfg.get("phrases") or ["richard", "rich erd", "瑞彻德"])
                 match = match_wake_phrase(text, phrases)
                 in_followup = self._in_followup()
+                log_transcripts = bool(logging_cfg.get("log_transcripts", True))
                 log_event(
                     "wake",
                     "asr_transcript",
-                    text=text,
+                    text=text if log_transcripts else "",
                     matched=bool(match.matched),
                     phrase=match.phrase,
-                    command_text=match.command_text if match.matched else "",
+                    command_text=match.command_text if match.matched and log_transcripts else "",
                     in_followup=in_followup,
                 )
                 if not match.matched and not in_followup:

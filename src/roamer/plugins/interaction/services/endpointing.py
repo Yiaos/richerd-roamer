@@ -107,6 +107,11 @@ class ChunkVadAdapter:
             return max(self._threshold, 1.0)
         return 0.0
 
+    def reset_stream(self) -> None:
+        reset = getattr(self._vad, "reset_stream", None)
+        if callable(reset):
+            reset()
+
     def _minimum_samples(self, sample_rate: int) -> int:
         if sample_rate == 16000:
             return self._MIN_16K_SAMPLES
@@ -133,6 +138,11 @@ class EndpointRecorder:
 
     def record(self) -> dict[str, Any]:
         cfg = self._config
+        reset_stream = getattr(self._vad_probability, "__self__", None)
+        if reset_stream is not None:
+            reset = getattr(reset_stream, "reset_stream", None)
+            if callable(reset):
+                reset()
         pre_chunks = max(0, int(round(cfg.pre_speech_padding_sec / cfg.chunk_duration_sec)))
         silence_chunks = max(1, int(round(cfg.silence_sec / cfg.chunk_duration_sec)))
         min_speech_chunks = max(1, int(round(cfg.min_speech_sec / cfg.chunk_duration_sec)))

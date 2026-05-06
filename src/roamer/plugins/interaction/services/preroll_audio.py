@@ -28,6 +28,8 @@ class PreRollAudioSource:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._running = False
+        self._lock = threading.RLock()
+        self._capture_count = 0
 
     def start(self) -> None:
         """Start background capture resources.
@@ -59,7 +61,8 @@ class PreRollAudioSource:
 
     def snapshot(self) -> list[bytes]:
         """Return buffered pre-roll chunks in playback order."""
-        return list(self._buffer)
+        with self._lock:
+            return list(self._buffer)
 
     def drain_available_for_test(self, limit: int | None = None) -> None:
         """Drain chunks into the pre-roll buffer for deterministic unit tests."""
@@ -69,14 +72,21 @@ class PreRollAudioSource:
                 chunk = next(self._chunk_iter)
             except StopIteration:
                 return
-            self._buffer.append(chunk)
+            with self._lock:
+                self._buffer.append(chunk)
             count += 1
 
     def capture_iter(self, max_duration_sec: float) -> Iterator[bytes]:
         """Yield current pre-roll snapshot followed by live chunks."""
-        snapshot = self.snapshot()
-        self.clear_live_queue()
-        yield from self.chunks_after_snapshot(snapshot, max_duration_sec=max_duration_sec)
+        with self._lock:
+            snapshot = list(self._buffer)
+            self._clear_live_queue_locked()
+            self._capture_count += 1
+        try:
+            yield from self.chunks_after_snapshot(snapshot, max_duration_sec=max_duration_sec)
+        finally:
+            with self._lock:
+                self._capture_count = max(0, self._capture_count - 1)
 
     def chunks_after_snapshot(
         self,
@@ -107,7 +117,8 @@ class PreRollAudioSource:
             for chunk in self._chunk_iter:
                 if self._stop.is_set():
                     return
-                self._buffer.append(chunk)
+                with self._lock:
+                    self._buffer.append(chunk)
                 self._put_live_chunk(chunk)
         finally:
             self._running = False
@@ -124,12 +135,23 @@ class PreRollAudioSource:
             raise StopIteration from exc
 
     def _put_live_chunk(self, chunk: bytes) -> None:
-        while self._live_chunks.full():
+        while not self._stop.is_set():
+            with self._lock:
+                capturing = self._capture_count > 0
+            if not capturing:
+                with self._lock:
+                    while self._live_chunks.full():
+                        try:
+                            self._live_chunks.get_nowait()
+                        except queue.Empty:
+                            break
+                    self._live_chunks.put_nowait(chunk)
+                return
             try:
-                self._live_chunks.get_nowait()
-            except queue.Empty:
-                break
-        self._live_chunks.put_nowait(chunk)
+                self._live_chunks.put(chunk, timeout=0.05)
+                return
+            except queue.Full:
+                continue
 
     def _close_chunk_iter(self) -> None:
         close = getattr(self._chunk_iter, "close", None)
@@ -142,6 +164,10 @@ class PreRollAudioSource:
 
     def clear_live_queue(self) -> None:
         """Discard chunks already represented by the pre-roll snapshot."""
+        with self._lock:
+            self._clear_live_queue_locked()
+
+    def _clear_live_queue_locked(self) -> None:
         while True:
             try:
                 self._live_chunks.get_nowait()
@@ -150,5 +176,6 @@ class PreRollAudioSource:
 
     def clear(self) -> None:
         """Discard pre-roll and queued live chunks."""
-        self._buffer.clear()
+        with self._lock:
+            self._buffer.clear()
         self.clear_live_queue()

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
+from roamer.plugins.interaction.drivers.speech.vad.silero import SileroDriver
 from roamer.plugins.interaction.services.endpointing import (
     ChunkVadAdapter,
     EndpointConfig,
@@ -93,6 +94,66 @@ def test_chunk_vad_adapter_maps_batch_detect_to_probability() -> None:
     adapter = ChunkVadAdapter(_Vad(), threshold=0.5)
 
     assert adapter.probability(np.zeros(512, dtype=np.float32), 16000) == 1.0
+
+
+def test_silero_probability_keeps_stream_state_between_chunks() -> None:
+    class _Session:
+        def __init__(self):
+            self.states = []
+
+        def run(self, _outputs, inputs):
+            self.states.append(inputs["state"].copy())
+            next_state = np.ones((2, 1, 128), dtype=np.float32) * len(self.states)
+            return np.array([[0.9]], dtype=np.float32), next_state
+
+    driver = SileroDriver({"model": "/unused"})
+    driver._session = _Session()
+    driver._sr = np.array(16000, dtype=np.int64)
+
+    first = driver.probability(np.zeros(512, dtype=np.float32), 16000)
+    second = driver.probability(np.zeros(512, dtype=np.float32), 16000)
+
+    assert first > 0.89
+    assert second > 0.89
+    assert np.all(driver._session.states[0] == 0.0)
+    assert np.all(driver._session.states[1] == 1.0)
+
+
+def test_endpoint_resets_streaming_vad_before_each_record(tmp_path: Path) -> None:
+    class _Vad:
+        def __init__(self):
+            self.reset_count = 0
+
+        def reset_stream(self):
+            self.reset_count += 1
+
+        def probability(self, _audio, _sample_rate):
+            return 0.9
+
+    vad = _Vad()
+    cfg = EndpointConfig(
+        silence_sec=1.0,
+        min_speech_sec=0.1,
+        max_record_sec=0.1,
+        pre_speech_padding_sec=0.0,
+        no_speech_timeout_sec=0.1,
+        threshold=0.5,
+        sample_rate=16000,
+        channels=1,
+        chunk_duration_sec=0.1,
+    )
+    recorder = EndpointRecorder(
+        chunk_source=[_chunk(1)],
+        vad_probability=ChunkVadAdapter(vad, threshold=0.5).probability,
+        config=cfg,
+        output_path=str(tmp_path / "speech.wav"),
+        clock=lambda: 0.0,
+    )
+
+    result = recorder.record()
+
+    assert result["ok"] is True
+    assert vad.reset_count == 1
 
 
 def test_endpoint_no_speech_timeout(tmp_path: Path) -> None:

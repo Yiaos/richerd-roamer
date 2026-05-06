@@ -44,6 +44,27 @@ def test_wake_logs_transcript_and_match(monkeypatch) -> None:
     assert events[0][2]["command_text"] == "现在几点了"
 
 
+def test_wake_respects_log_transcripts_setting(monkeypatch) -> None:
+    events = []
+    config = _converse_config()
+    config["logging"] = {"log_transcripts": False}
+    cap = WakeCapability(config)
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._start_preroll_source_if_needed = Mock(return_value=None)
+    cap._listen_once = Mock(return_value={"ok": True, "text": "瑞彻德 现在几点了"})
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "local", "action": "time.now"})
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.capabilities.wake.log_event",
+        lambda component, event, **fields: events.append((component, event, fields)),
+    )
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    assert events[0][2]["text"] == ""
+    assert events[0][2]["command_text"] == ""
+
+
 def test_wake_does_not_log_empty_transcript(monkeypatch) -> None:
     events = []
     cap = WakeCapability(_converse_config())
@@ -76,6 +97,22 @@ def test_converse_logs_route_decision(monkeypatch) -> None:
     assert events[0][2]["text"] == "现在几点"
     assert events[0][2]["route"] == "local"
     assert events[0][2]["action"] == "time.now"
+
+
+def test_converse_respects_log_transcripts_setting(monkeypatch) -> None:
+    events = []
+    config = _converse_config()
+    config["logging"] = {"log_transcripts": False}
+    cap = ConverseCapability(config)
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.capabilities.converse.log_event",
+        lambda component, event, **fields: events.append((component, event, fields)),
+    )
+
+    turn = cap.route_text("现在几点", session_id="s1", turn_id=1, no_sound=True)
+
+    assert turn["route"] == "local"
+    assert events[0][2]["text"] == ""
 
 
 def test_listen_logs_asr_transcript(monkeypatch, tmp_path) -> None:
@@ -158,6 +195,33 @@ def test_speak_logs_playback_result(monkeypatch, tmp_path) -> None:
     assert ("speak", "playback") == events[0][:2]
     assert events[0][2]["text"] == "测试语音"
     assert events[0][2]["played"] is True
+
+
+def test_speak_respects_log_transcripts_setting(monkeypatch, tmp_path) -> None:
+    events = []
+    tts_driver = Mock(synthesize=Mock(return_value={"ok": True, "duration_sec": 1.0}))
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.capabilities.speak.get_driver",
+        lambda kind, name, cfg: tts_driver,
+    )
+    with patch("roamer.plugins.interaction.capabilities.speak.AudioCapability") as audio_cls:
+        audio_cls.return_value.play.return_value = {"ok": True}
+        cap = SpeakCapability(
+            {
+                "drivers": {"tts": "edge", "audio": "alsa"},
+                "logging": {"log_transcripts": False},
+            }
+        )
+        cap._create_temp_audio = Mock(return_value=str(tmp_path / "tts.wav"))
+        monkeypatch.setattr(
+            "roamer.plugins.interaction.capabilities.speak.log_event",
+            lambda component, event, **fields: events.append((component, event, fields)),
+        )
+
+        result = cap.speak("测试语音", play=True)
+
+    assert result["ok"] is True
+    assert events[0][2]["text"] == ""
 
 
 def test_serve_runtime_logs_request(monkeypatch) -> None:

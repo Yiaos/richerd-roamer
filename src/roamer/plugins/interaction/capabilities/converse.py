@@ -109,6 +109,8 @@ class ConverseCapability(Capability):
     ) -> dict[str, Any]:
         """Route already-transcribed text through converse intent/fallback handling."""
         converse_cfg = self.config.get("converse", {})
+        logging_cfg = self.config.get("logging", {})
+        log_text = text if bool(logging_cfg.get("log_transcripts", True)) else ""
         intents = converse_cfg.get("intents", [])
         discord_cfg = converse_cfg.get("discord", {})
 
@@ -117,7 +119,7 @@ class ConverseCapability(Capability):
             log_event(
                 "converse",
                 "route_text",
-                text=text,
+                text=log_text,
                 matched=False,
                 route="error",
                 error_code=intent_result.get("error_code"),
@@ -183,13 +185,22 @@ class ConverseCapability(Capability):
                 turn_id=turn_id,
             )
             turn_info.update({"route": "discord", "fallback": fallback_result})
+            if not fallback_result.get("ok", False):
+                turn_info.update(
+                    {
+                        "ok": False,
+                        "error_code": fallback_result.get(
+                            "error_code", ErrorCode.CONVERSE_DISCORD_SEND_FAILED
+                        ),
+                    }
+                )
         else:
             turn_info.update({"route": "ignored", "reason": "fallback_disabled"})
 
         log_event(
             "converse",
             "route_text",
-            text=text,
+            text=log_text,
             matched=bool(intent_result.get("matched")),
             route=turn_info.get("route"),
             action=turn_info.get("action"),
@@ -267,7 +278,25 @@ class ConverseCapability(Capability):
             )
             if not turn_info.get("ok", True):
                 turns.append({k: v for k, v in turn_info.items() if k != "intent_result"})
-                return dict(turn_info["intent_result"])
+                intent_result = turn_info.get("intent_result")
+                if isinstance(intent_result, dict):
+                    return dict(intent_result)
+                fallback_result = turn_info.get("fallback")
+                if isinstance(fallback_result, dict):
+                    return error(
+                        "converse_discord_send_failed",
+                        str(fallback_result.get("message") or "Discord fallback failed"),
+                        error_code=fallback_result.get(
+                            "error_code", ErrorCode.CONVERSE_DISCORD_SEND_FAILED
+                        ),
+                        turns=turns,
+                    )
+                return error(
+                    "converse_failed",
+                    "Converse turn failed",
+                    error_code=turn_info.get("error_code"),
+                    turns=turns,
+                )
             if "endpoint_metrics" in listen_result:
                 turn_info["endpoint_metrics"] = listen_result["endpoint_metrics"]
 

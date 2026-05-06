@@ -125,6 +125,22 @@ def test_wake_clears_preroll_after_routing_before_followup() -> None:
     pre_roll.clear.assert_called_once()
 
 
+def test_wake_preroll_recording_uses_endpoint_window_after_trigger() -> None:
+    pre_roll = Mock()
+    config = _config()
+    config["converse"]["endpoint"]["max_record_sec"] = 8.0
+    cap = WakeCapability(config)
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._start_preroll_source_if_needed = Mock(return_value=pre_roll)
+    cap._listen_once = Mock(return_value={"ok": True, "text": "Richard 现在几点了"})
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "local"})
+
+    result = cap.run(once=True, timeout=0.1, no_sound=True)
+
+    assert result["ok"] is True
+    assert cap._listen_once.call_args.kwargs["timeout"] is None
+
+
 def test_wake_once_waits_for_followup_command_after_wake_phrase_only() -> None:
     config = _config()
     config["converse"]["wakeword"]["min_interval_sec"] = 0

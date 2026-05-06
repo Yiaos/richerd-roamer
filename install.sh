@@ -37,6 +37,10 @@ wake_service_name="${ROAMER_WAKE_SERVICE_NAME:-roamer-wake.service}"
 wake_service_src="$repo_dir/systemd/roamer-wake.service"
 wake_service_dst="/etc/systemd/system/$wake_service_name"
 wake_dropin_dir="/etc/systemd/system/$wake_service_name.d"
+init_service_name="${ROAMER_INIT_SERVICE_NAME:-roamer-init.service}"
+init_service_src="$repo_dir/systemd/roamer-init.service"
+init_service_dst="/etc/systemd/system/$init_service_name"
+init_dropin_dir="/etc/systemd/system/$init_service_name.d"
 
 [[ "$(uname -s)" == "Linux" ]] || die "install.sh must run on Roamer/Linux"
 have sudo || die "sudo is required"
@@ -48,16 +52,9 @@ require_file "$repo_dir/pyproject.toml"
 require_file "$repo_dir/config.yaml"
 require_file "$service_src"
 require_file "$wake_service_src"
+require_file "$init_service_src"
 require_file "$repo_dir/scripts/init-roamer-proxy.sh"
 require_dir "$roamer_home"
-
-if [[ ! -f "$user_env_file" ]]; then
-  die "runtime env file missing: $user_env_file; create it with DISCORD_BOT_TOKEN before installing"
-fi
-
-if ! grep -Eq '^(export[[:space:]]+)?DISCORD_BOT_TOKEN=.+' "$user_env_file"; then
-  die "DISCORD_BOT_TOKEN missing from $user_env_file"
-fi
 
 log "installing Python package into $venv_dir"
 if [[ ! -x "$venv_dir/bin/python" ]]; then
@@ -81,7 +78,23 @@ log "running proxy discovery to refresh $user_env_file"
 sudo -u "$roamer_user" env HOME="$roamer_home" ROAMER_ENV_FILE="$user_env_file" \
   bash "$repo_dir/scripts/init-roamer-proxy.sh" >/dev/null
 
-for key in DISCORD_BOT_TOKEN HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy NO_PROXY no_proxy; do
+discord_enabled="$("$venv_dir/bin/python" - "$repo_dir/config.yaml" <<'PY'
+import sys
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    config = yaml.safe_load(f) or {}
+discord = config.get("converse", {}).get("discord", {})
+print("yes" if discord.get("enabled") is True else "no")
+PY
+)"
+
+required_env_keys=(HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy NO_PROXY no_proxy)
+if [[ "$discord_enabled" == "yes" ]]; then
+  required_env_keys=(DISCORD_BOT_TOKEN "${required_env_keys[@]}")
+fi
+
+for key in "${required_env_keys[@]}"; do
   grep -Eq "^(export[[:space:]]+)?$key=.+" "$user_env_file" || die "$key missing after proxy init"
 done
 
@@ -94,7 +107,7 @@ awk '
     print
   }
 ' "$user_env_file" > "$tmp_env"
-for key in DISCORD_BOT_TOKEN HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy NO_PROXY no_proxy; do
+for key in "${required_env_keys[@]}"; do
   grep -Eq "^$key=.+" "$tmp_env" || die "converted systemd env is missing $key"
 done
 sudo install -m 0600 -o root -g root "$tmp_env" "$system_env_file"
@@ -131,6 +144,22 @@ print(
 PY
 )"
 
+init_enabled="$("$venv_dir/bin/python" - "$repo_dir/config.yaml" <<'PY'
+import sys
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    config = yaml.safe_load(f) or {}
+init = config.get("init", {})
+keys = (
+    "connect_speaker_on_startup",
+    "configure_proxy_on_startup",
+    "ensure_serve_on_startup",
+)
+print("yes" if any(init.get(key) is True for key in keys) else "no")
+PY
+)"
+
 if [[ "$wake_enabled" == "yes" ]]; then
   log "verifying GPIO dependency for $wake_service_name"
   sudo -u "$roamer_user" "$venv_dir/bin/python" - <<'PY'
@@ -153,7 +182,29 @@ EOF
 EnvironmentFile=$system_env_file
 EOF
 else
-  log "$wake_service_name not enabled by config; skipping wake service install"
+  log "$wake_service_name not enabled by config; disabling wake service if present"
+  sudo systemctl disable --now "$wake_service_name" >/dev/null 2>&1 || true
+fi
+
+if [[ "$init_enabled" == "yes" ]]; then
+  log "installing $init_service_name"
+  sudo install -m 0644 -o root -g root "$init_service_src" "$init_service_dst"
+  sudo install -d -m 0755 -o root -g root "$init_dropin_dir"
+  sudo tee "$init_dropin_dir/user.conf" >/dev/null <<EOF
+[Service]
+User=$roamer_user
+Group=$roamer_user
+Environment=HOME=$roamer_home
+Environment=XDG_RUNTIME_DIR=/run/user/$roamer_uid
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$roamer_uid/bus
+EOF
+  sudo tee "$init_dropin_dir/env.conf" >/dev/null <<EOF
+[Service]
+EnvironmentFile=$system_env_file
+EOF
+else
+  log "$init_service_name not enabled by config; disabling init service if present"
+  sudo systemctl disable --now "$init_service_name" >/dev/null 2>&1 || true
 fi
 
 log "starting $service_name"
@@ -167,6 +218,11 @@ if [[ "$wake_enabled" == "yes" ]]; then
   sudo systemctl enable --now "$wake_service_name" >/dev/null
   sudo systemctl restart "$wake_service_name"
   systemctl is-active --quiet "$wake_service_name" || die "$wake_service_name is not active after restart"
+fi
+
+if [[ "$init_enabled" == "yes" ]]; then
+  log "enabling $init_service_name"
+  sudo systemctl enable "$init_service_name" >/dev/null
 fi
 
 log "verifying Roamer daemon"
