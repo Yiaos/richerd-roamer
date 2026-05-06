@@ -238,17 +238,19 @@ class ListenCapability(Capability):
             if endpoint_metrics is not None:
                 response["endpoint_metrics"] = endpoint_metrics
             logging_cfg = self.config.get("logging", {})
-            log_event(
-                "listen",
-                "asr_transcript",
-                text=asr_result.get("text", "")
-                if bool(logging_cfg.get("log_transcripts", True))
-                else "",
-                confidence=asr_result.get("confidence"),
-                duration_sec=end_time - start_time,
-                audio_path=audio_path if bool(logging_cfg.get("log_audio_paths", False)) else None,
-                endpoint_metrics=endpoint_metrics,
-            )
+            transcript = str(asr_result.get("text", "") or "").strip()
+            if transcript:
+                log_event(
+                    "listen",
+                    "asr_transcript",
+                    text=transcript if bool(logging_cfg.get("log_transcripts", True)) else "",
+                    confidence=asr_result.get("confidence"),
+                    duration_sec=end_time - start_time,
+                    audio_path=audio_path
+                    if bool(logging_cfg.get("log_audio_paths", False))
+                    else None,
+                    endpoint_metrics=endpoint_metrics,
+                )
             return response
         finally:
             try:

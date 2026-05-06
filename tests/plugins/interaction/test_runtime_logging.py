@@ -44,6 +44,23 @@ def test_wake_logs_transcript_and_match(monkeypatch) -> None:
     assert events[0][2]["command_text"] == "现在几点了"
 
 
+def test_wake_does_not_log_empty_transcript(monkeypatch) -> None:
+    events = []
+    cap = WakeCapability(_converse_config())
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._start_preroll_source_if_needed = Mock(return_value=None)
+    cap._listen_once = Mock(return_value={"ok": True, "text": "   "})
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.capabilities.wake.log_event",
+        lambda component, event, **fields: events.append((component, event, fields)),
+    )
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    assert events == []
+
+
 def test_converse_logs_route_decision(monkeypatch) -> None:
     events = []
     cap = ConverseCapability(_converse_config())
@@ -88,6 +105,35 @@ def test_listen_logs_asr_transcript(monkeypatch, tmp_path) -> None:
     assert result["ok"] is True
     assert ("listen", "asr_transcript") == events[0][:2]
     assert events[0][2]["text"] == "瑞彻德"
+
+
+def test_listen_does_not_log_empty_asr_transcript(monkeypatch, tmp_path) -> None:
+    events = []
+    cap = ListenCapability.__new__(ListenCapability)
+    cap.config = {}
+    cap._vad = Mock(
+        detect=Mock(
+            return_value={
+                "ok": True,
+                "speech_detected": True,
+                "segments": [{"start": 0.0, "end": 0.2}],
+            }
+        )
+    )
+    cap._asr = Mock(transcribe=Mock(return_value={"ok": True, "text": "   ", "confidence": 0.0}))
+    cap._create_temp_audio = Mock(return_value=str(tmp_path / "trimmed.wav"))
+    cap._load_wav = Mock(return_value=(np.ones(3200, dtype=np.float32), 16000))
+    cap._save_wav = Mock()
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.capabilities.listen.log_event",
+        lambda component, event, **fields: events.append((component, event, fields)),
+    )
+
+    result = cap.transcribe_audio_file(str(tmp_path / "input.wav"))
+
+    assert result["ok"] is True
+    assert result["text"] == "   "
+    assert events == []
 
 
 def test_speak_logs_playback_result(monkeypatch, tmp_path) -> None:

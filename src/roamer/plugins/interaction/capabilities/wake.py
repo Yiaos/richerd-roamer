@@ -97,6 +97,8 @@ class WakeCapability(Capability):
                     continue
 
                 text = str(listen_result.get("text") or "").strip()
+                if not text:
+                    continue
                 wake_cfg = self.config.get("converse", {}).get("wakeword", {})
                 phrases = list(wake_cfg.get("phrases") or ["richard", "rich erd", "瑞彻德"])
                 match = match_wake_phrase(text, phrases)
