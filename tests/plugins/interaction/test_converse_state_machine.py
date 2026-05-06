@@ -99,6 +99,59 @@ def test_converse_route_text_reuses_local_intent_flow() -> None:
     assert result["action"] == "time.now"
 
 
+def test_converse_logs_route_before_local_side_effect(monkeypatch) -> None:
+    events = []
+    order = []
+    cap = ConverseCapability(_base_config())
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.capabilities.converse.log_event",
+        lambda component, event, **fields: events.append((component, event, fields))
+        or order.append(event),
+    )
+
+    def _run_action(name: str, **_kwargs):
+        order.append(name)
+        return {"ok": True, "played": True}
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.run_action",
+        side_effect=_run_action,
+    ):
+        result = cap.route_text("现在几点", session_id="s1", turn_id=1, no_sound=False)
+
+    assert result["route"] == "local"
+    assert order[0] == "route_text"
+    assert order[1] == "speak"
+    assert events[0][2]["route"] == "local"
+    assert events[0][2]["action"] == "time.now"
+
+
+def test_converse_logs_route_before_discord_fallback(monkeypatch) -> None:
+    events = []
+    order = []
+    cap = ConverseCapability(_base_config())
+    monkeypatch.setattr(
+        "roamer.plugins.interaction.capabilities.converse.log_event",
+        lambda component, event, **fields: events.append((component, event, fields))
+        or order.append(event),
+    )
+
+    def _send_fallback(*_args, **_kwargs):
+        order.append("send_fallback")
+        return {"ok": True, "sent": True}
+
+    with patch(
+        "roamer.plugins.interaction.capabilities.converse.send_fallback",
+        side_effect=_send_fallback,
+    ):
+        result = cap.route_text("讲个笑话", session_id="s1", turn_id=1, no_sound=True)
+
+    assert result["route"] == "discord"
+    assert order[0] == "route_text"
+    assert order[1] == "send_fallback"
+    assert events[0][2]["route"] == "discord"
+
+
 def test_converse_route_text_reuses_discord_fallback_flow() -> None:
     cap = ConverseCapability(_base_config())
 

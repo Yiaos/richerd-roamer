@@ -145,11 +145,27 @@ class ConverseCapability(Capability):
         if intent_result.get("matched"):
             action = str(intent_result.get("action"))
             if action == "time.now":
+                turn_info.update({"route": "local", "action": action})
+                self._log_route_text(
+                    text=log_text,
+                    intent_result=intent_result,
+                    turn_info=turn_info,
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
                 now_text = dt.datetime.now().strftime("现在是 %H:%M")
                 speak_result = self._safe_speak(now_text, no_sound=no_sound)
-                turn_info.update({"route": "local", "action": action, "speak": speak_result})
+                turn_info.update({"speak": speak_result})
             elif action == "remind.schedule":
                 slots = dict(intent_result.get("slots") or {})
+                turn_info.update({"route": "local", "action": action, "slots": slots})
+                self._log_route_text(
+                    text=log_text,
+                    intent_result=intent_result,
+                    turn_info=turn_info,
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
                 action_result = run_action(
                     "remind",
                     delay_sec=float(slots.get("delay_sec", 0)),
@@ -157,27 +173,38 @@ class ConverseCapability(Capability):
                 )
                 turn_info.update(
                     {
-                        "route": "local",
-                        "action": action,
-                        "slots": slots,
                         "action_result": action_result,
                     }
                 )
                 if action_result.get("ok"):
                     self._safe_speak("好，已设置提醒", no_sound=no_sound)
             else:
+                turn_info.update({"route": "local", "action": action})
+                self._log_route_text(
+                    text=log_text,
+                    intent_result=intent_result,
+                    turn_info=turn_info,
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
                 self._ensure_local_intent_actions_registered()
                 action_result = run_action(action)
                 turn_info.update(
                     {
-                        "route": "local",
-                        "action": action,
                         "action_result": action_result,
                     }
                 )
                 if action_result.get("ok"):
                     self._safe_speak(f"已执行 {action}", no_sound=no_sound)
         elif allow_fallback:
+            turn_info.update({"route": "discord"})
+            self._log_route_text(
+                text=log_text,
+                intent_result=intent_result,
+                turn_info=turn_info,
+                session_id=session_id,
+                turn_id=turn_id,
+            )
             fallback_result = self._fallback_via_discord(
                 text,
                 discord_cfg=discord_cfg,
@@ -196,18 +223,35 @@ class ConverseCapability(Capability):
                 )
         else:
             turn_info.update({"route": "ignored", "reason": "fallback_disabled"})
+            self._log_route_text(
+                text=log_text,
+                intent_result=intent_result,
+                turn_info=turn_info,
+                session_id=session_id,
+                turn_id=turn_id,
+            )
 
+        return turn_info
+
+    def _log_route_text(
+        self,
+        *,
+        text: str,
+        intent_result: dict[str, Any],
+        turn_info: dict[str, Any],
+        session_id: str,
+        turn_id: int,
+    ) -> None:
         log_event(
             "converse",
             "route_text",
-            text=log_text,
+            text=text,
             matched=bool(intent_result.get("matched")),
             route=turn_info.get("route"),
             action=turn_info.get("action"),
             session_id=session_id,
             turn_id=turn_id,
         )
-        return turn_info
 
     def run(
         self,

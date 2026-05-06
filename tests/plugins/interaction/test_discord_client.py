@@ -75,6 +75,10 @@ def test_send_fallback_success() -> None:
     assert events[1][2]["status"] == 200
     assert events[1][2]["status_code"] == 200
     assert events[1][2]["message_id"] == "msg-1"
+    assert events[1][2]["channel_id"] == "123456"
+    assert events[1][2]["content_length"] == len(result["content"])
+    assert events[1][2]["mention_configured"] is False
+    assert events[1][2]["timeout_sec"] == 3.0
 
 
 def test_send_fallback_respects_log_transcripts_setting() -> None:
@@ -184,6 +188,10 @@ def test_send_fallback_http_error() -> None:
     assert events[-1][2]["ok"] is False
     assert events[-1][2]["status"] == 500
     assert events[-1][2]["error_code"] == ErrorCode.CONVERSE_DISCORD_SEND_FAILED
+    assert events[-1][2]["channel_id"] == "123456"
+    assert events[-1][2]["content_length"] > 0
+    assert events[-1][2]["mention_configured"] is False
+    assert events[-1][2]["timeout_sec"] == 3.0
 
 
 def test_send_fallback_timeout_or_runtime_error() -> None:
@@ -208,3 +216,7 @@ def test_send_fallback_disabled() -> None:
     assert result["skipped"] is True
     assert ("discord", "send_result") == events[0][:2]
     assert events[0][2]["skipped"] is True
+    assert events[0][2]["channel_id"] == "123456"
+    assert events[0][2]["content_length"] > 0
+    assert events[0][2]["mention_configured"] is False
+    assert events[0][2]["timeout_sec"] == 3.0

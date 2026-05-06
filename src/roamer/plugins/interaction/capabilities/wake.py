@@ -5,11 +5,12 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import Callable
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
 from roamer.platform.contract import ErrorCode
-from roamer.platform.logging import log_event, request_context
+from roamer.platform.logging import current_request_id, log_event, request_context
 from roamer.platform.output import error, success
 from roamer.platform.runtime import run_action
 from roamer.plugins.interaction.capabilities.base import Capability
@@ -82,7 +83,12 @@ class WakeCapability(Capability):
                         error_code=ErrorCode.AUDIO_RECORD_COMMAND_FAILED,
                     )
 
-                with request_context(uuid.uuid4().hex[:12]):
+                context = (
+                    nullcontext()
+                    if current_request_id() is not None
+                    else request_context(uuid.uuid4().hex[:12])
+                )
+                with context:
                     in_followup_wait = self._in_followup()
                     if not in_followup_wait:
                         wait_started_at = self._clock()

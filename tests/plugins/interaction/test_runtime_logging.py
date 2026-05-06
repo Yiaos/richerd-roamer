@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
+from roamer.platform.logging import current_request_id, request_context
 from roamer.plugins.interaction.capabilities.audio import AudioCapability
 from roamer.plugins.interaction.capabilities.converse import ConverseCapability
 from roamer.plugins.interaction.capabilities.listen import ListenCapability
@@ -57,6 +58,33 @@ def test_wake_logs_transcript_and_match(monkeypatch) -> None:
     assert asr_event[2]["command_text"] == "现在几点了"
     assert _event(events, "route_start")[2]["text"] == "现在几点了"
     assert _event(events, "route_done")[2]["ok"] is True
+
+
+def test_wake_preserves_existing_request_context(monkeypatch) -> None:
+    request_ids = []
+    cap = WakeCapability(_converse_config())
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._start_preroll_source_if_needed = Mock(return_value=None)
+
+    def _listen_once(**_kwargs):
+        request_ids.append(("listen", current_request_id()))
+        return {"ok": True, "text": "瑞彻德 现在几点了"}
+
+    def _route_text(**_kwargs):
+        request_ids.append(("route", current_request_id()))
+        return {"turn_id": 1, "route": "local", "action": "time.now"}
+
+    cap._listen_once = Mock(side_effect=_listen_once)
+    cap._route_text = Mock(side_effect=_route_text)
+
+    with request_context("req-wake-parent"):
+        result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    assert request_ids == [
+        ("listen", "req-wake-parent"),
+        ("route", "req-wake-parent"),
+    ]
 
 
 def test_wake_respects_log_transcripts_setting(monkeypatch) -> None:

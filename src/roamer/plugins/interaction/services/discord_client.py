@@ -60,6 +60,23 @@ def send_fallback(
     """Send fallback text to Discord channel using Bot REST API."""
     discord_cfg = (config or {}).get("discord", {})
     logging_cfg = (config or {}).get("logging", {})
+    channel_id = str(discord_cfg.get("channel_id") or "").strip()
+    token_env = str(discord_cfg.get("token_env") or "DISCORD_BOT_TOKEN")
+    source = str(discord_cfg.get("source") or "roamer")
+    instruction = str(
+        discord_cfg.get("reply_instruction")
+        or "通过 roamer control node 语音播报回复"
+    )
+    mention_prefix = _mention_prefix(discord_cfg)
+    content = mention_prefix + str(text).strip() + "\n" + instruction
+    common_log_fields = {
+        "channel_id": channel_id,
+        "session_id": session_id,
+        "turn_id": turn_id,
+        "content_length": len(content),
+        "mention_configured": bool(mention_prefix),
+        "timeout_sec": timeout_sec,
+    }
     if not bool(discord_cfg.get("enabled", False)):
         result = success(sent=False, skipped=True, reason="discord_disabled")
         log_event(
@@ -69,15 +86,11 @@ def send_fallback(
             sent=False,
             skipped=True,
             reason="discord_disabled",
-            session_id=session_id,
-            turn_id=turn_id,
+            **common_log_fields,
         )
         return result
 
-    channel_id = str(discord_cfg.get("channel_id") or "").strip()
-    token_env = str(discord_cfg.get("token_env") or "DISCORD_BOT_TOKEN")
     token = os.getenv(token_env, "")
-    source = str(discord_cfg.get("source") or "roamer")
 
     if not channel_id or not token:
         result = error(
@@ -98,8 +111,7 @@ def send_fallback(
             channel_configured=bool(channel_id),
             token_env=token_env,
             token_configured=bool(token),
-            session_id=session_id,
-            turn_id=turn_id,
+            **common_log_fields,
         )
         return result
 
@@ -111,24 +123,13 @@ def send_fallback(
         "timestamp": _utc_iso(),
     }
 
-    instruction = str(
-        discord_cfg.get("reply_instruction")
-        or "通过 roamer control node 语音播报回复"
-    )
-    mention_prefix = _mention_prefix(discord_cfg)
-    content = mention_prefix + str(text).strip() + "\n" + instruction
     body = {"content": content}
     log_transcripts = bool(logging_cfg.get("log_transcripts", True))
     log_event(
         "discord",
         "send_request",
-        channel_id=channel_id,
-        session_id=session_id,
-        turn_id=turn_id,
         content=content if log_transcripts else "",
-        content_length=len(content),
-        mention_configured=bool(mention_prefix),
-        timeout_sec=timeout_sec,
+        **common_log_fields,
     )
 
     req = request.Request(
@@ -156,8 +157,7 @@ def send_fallback(
                     status=status,
                     status_code=status,
                     message_id=response_payload.get("id"),
-                    session_id=session_id,
-                    turn_id=turn_id,
+                    **common_log_fields,
                 )
                 return result
             result = error(
@@ -175,8 +175,7 @@ def send_fallback(
                 status=status,
                 status_code=status,
                 error_code=result.get("error_code"),
-                session_id=session_id,
-                turn_id=turn_id,
+                **common_log_fields,
             )
             return result
     except url_error.HTTPError as exc:
@@ -195,8 +194,7 @@ def send_fallback(
             status=exc.code,
             status_code=exc.code,
             error_code=result.get("error_code"),
-            session_id=session_id,
-            turn_id=turn_id,
+            **common_log_fields,
         )
         return result
     except Exception as exc:
@@ -214,7 +212,6 @@ def send_fallback(
             error_code=result.get("error_code"),
             error_type=type(exc).__name__,
             error_message=str(exc),
-            session_id=session_id,
-            turn_id=turn_id,
+            **common_log_fields,
         )
         return result

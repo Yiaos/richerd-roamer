@@ -213,6 +213,9 @@ def test_endpoint_logs_record_failure(monkeypatch, tmp_path: Path) -> None:
     assert len(failed) == 1
     assert failed[0][2]["reason"] == "no_speech_timeout"
     assert failed[0][2]["endpoint_metrics"]["speech_duration_sec"] == 0.0
+    assert failed[0][2]["record_duration_sec"] == 0.5
+    assert failed[0][2]["speech_duration_sec"] == 0.0
+    assert failed[0][2]["wall_duration_sec"] >= 0.0
 
 
 def test_endpoint_hesitant_pause_below_silence_does_not_cut(tmp_path: Path) -> None:

@@ -210,6 +210,7 @@ class EndpointRecorder:
                             total_chunks=total_chunks,
                             speech_chunks=0,
                             endpoint_metrics=metrics,
+                            **metrics,
                         )
                         return error(
                             "vad_no_speech",
@@ -261,6 +262,7 @@ class EndpointRecorder:
                 total_chunks=total_chunks,
                 speech_chunks=0,
                 endpoint_metrics=metrics,
+                **metrics,
             )
             return error(
                 "vad_no_speech",
