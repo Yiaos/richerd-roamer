@@ -136,9 +136,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "mention_user_id": "",
             "mention_role_id": "",
             "mention": "",
-            "reply_instruction": (
-                "只回复普通文本，不要调用 tts 或任何语音工具；Roamer 会播放你的文字回复。"
-            ),
+            "reply_instruction": "通过 roamer control node 语音播报回复",
         },
     },
 }

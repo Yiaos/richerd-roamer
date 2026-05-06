@@ -9,7 +9,7 @@ from roamer.platform.contract import ErrorCode
 from roamer.plugins.interaction.services.discord_client import send_fallback
 
 DEFAULT_REPLY_INSTRUCTION = (
-    "只回复普通文本，不要调用 tts 或任何语音工具；Roamer 会播放你的文字回复。"
+    "通过 roamer control node 语音播报回复"
 )
 
 
@@ -51,8 +51,7 @@ def test_send_fallback_success() -> None:
     assert result["payload"]["turn_id"] == 1
     assert result["payload"]["text"] == "hello"
     assert result["content"] == f"hello\n{DEFAULT_REPLY_INSTRUCTION}"
-    assert "tts" in result["content"]
-    assert "不要调用" in result["content"]
+    assert "roamer control node" in result["content"]
     assert "[roamer-fallback]" not in result["content"]
     assert "session_id" not in result["content"]
     assert "timestamp" in result["payload"]

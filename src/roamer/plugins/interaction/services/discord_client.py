@@ -69,7 +69,7 @@ def send_fallback(
 
     instruction = str(
         discord_cfg.get("reply_instruction")
-        or "只回复普通文本，不要调用 tts 或任何语音工具；Roamer 会播放你的文字回复。"
+        or "通过 roamer control node 语音播报回复"
     )
     content = _mention_prefix(discord_cfg) + str(text).strip() + "\n" + instruction
     body = {"content": content}

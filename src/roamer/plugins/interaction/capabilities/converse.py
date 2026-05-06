@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 import threading
 import uuid
 from typing import Any
@@ -18,6 +19,60 @@ from roamer.plugins.interaction.services.discord_client import send_fallback
 from roamer.plugins.interaction.services.intent import match_intent
 from roamer.plugins.motion.plugin import register as register_motion_plugin
 from roamer.plugins.perception.plugin import register as register_perception_plugin
+
+_CJK_REQUEST_MARKERS = (
+    "谁",
+    "什么",
+    "为什么",
+    "怎么",
+    "如何",
+    "吗",
+    "呢",
+    "讲",
+    "说",
+    "告诉",
+    "介绍",
+    "解释",
+    "帮我",
+    "请",
+    "查",
+    "搜索",
+)
+_INCOMPLETE_FALLBACK_FRAGMENTS = {
+    "嗯",
+    "啊",
+    "呃",
+    "哦",
+    "是",
+    "去",
+    "对",
+    "好",
+    "行",
+    "可以",
+    "觉得挺",
+    "帮我",
+}
+_TERMINAL_PUNCTUATION = tuple("。！？!?")
+
+
+def _looks_complete_fallback_text(text: str) -> bool:
+    """Conservative gate for sending an unmatched voice request to Discord."""
+    candidate = str(text or "").strip()
+    if not candidate:
+        return False
+    if candidate in _INCOMPLETE_FALLBACK_FRAGMENTS:
+        return False
+    if candidate.endswith(_TERMINAL_PUNCTUATION):
+        return True
+
+    cjk_count = sum(1 for char in candidate if "\u4e00" <= char <= "\u9fff")
+    if cjk_count:
+        if cjk_count >= 4:
+            return True
+        return cjk_count >= 3 and any(marker in candidate for marker in _CJK_REQUEST_MARKERS)
+
+    words = re.findall(r"[A-Za-z0-9']+", candidate)
+    return len(words) >= 3
 
 
 class ConverseCapability(Capability):
@@ -175,7 +230,7 @@ class ConverseCapability(Capability):
                 )
                 if action_result.get("ok"):
                     self._safe_speak(f"已执行 {action}", no_sound=no_sound)
-        elif allow_fallback:
+        elif allow_fallback and _looks_complete_fallback_text(text):
             fallback_result = self._fallback_via_discord(
                 text,
                 discord_cfg=discord_cfg,
@@ -183,6 +238,8 @@ class ConverseCapability(Capability):
                 turn_id=turn_id,
             )
             turn_info.update({"route": "discord", "fallback": fallback_result})
+        elif allow_fallback:
+            turn_info.update({"route": "ignored", "reason": "fallback_incomplete_text"})
         else:
             turn_info.update({"route": "ignored", "reason": "fallback_disabled"})
 
