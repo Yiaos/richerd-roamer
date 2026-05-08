@@ -15,6 +15,9 @@ def _config() -> dict:
                 "driver": "su03t_gpio",
                 "phrases": ["richard", "rich erd", "瑞彻德"],
                 "followup_timeout_sec": 10.0,
+                "continuous_followup_enabled": True,
+                "max_followup_turns": 3,
+                "stop_phrases": ["不用了", "结束", "停止", "可以了"],
             },
             "endpoint": {"max_record_sec": 8.0},
             "intents": [{"name": "time_now", "action": "time.now", "patterns": ["几点"]}],
@@ -43,7 +46,7 @@ def test_wake_once_waits_for_valid_wake_phrase_after_non_match() -> None:
     cap._wait_for_trigger = Mock(return_value=True)
     cap._listen_once = Mock(
         side_effect=[
-            {"ok": True, "text": "现在几点了"},
+            {"ok": True, "text": "环境噪音"},
             {"ok": True, "text": "Richard 现在几点了"},
         ]
     )
@@ -56,6 +59,20 @@ def test_wake_once_waits_for_valid_wake_phrase_after_non_match() -> None:
     assert cap._listen_once.call_count == 2
     cap._route_text.assert_called_once()
     assert cap._route_text.call_args.kwargs["text"] == "现在几点了"
+
+
+def test_wake_routes_local_intent_without_exact_wake_phrase_match() -> None:
+    cap = WakeCapability(_config())
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._listen_once = Mock(return_value={"ok": True, "text": "车的，现在几点了？"})
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "local"})
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    cap._route_text.assert_called_once()
+    assert cap._route_text.call_args.kwargs["text"] == "车的，现在几点了？"
+    assert cap._route_text.call_args.kwargs["allow_fallback"] is False
 
 
 def test_wake_service_mode_keeps_polling_after_empty_timeout() -> None:
@@ -181,6 +198,35 @@ def test_wake_preroll_recording_uses_endpoint_window_after_trigger() -> None:
     assert cap._listen_once.call_args.kwargs["timeout"] is None
 
 
+def test_wake_followup_recording_uses_remaining_followup_timeout() -> None:
+    now = [100.0]
+    config = _config()
+    config["converse"]["wakeword"]["min_interval_sec"] = 0
+    config["converse"]["wakeword"]["followup_timeout_sec"] = 3.0
+    cap = WakeCapability(config, clock=lambda: now[0])
+    original_enter_followup = cap._enter_followup
+
+    def _enter_followup_then_advance(**kwargs):
+        original_enter_followup(**kwargs)
+        now[0] = 101.0
+
+    cap._enter_followup = _enter_followup_then_advance
+    cap._wait_for_trigger = Mock(return_value=True)
+
+    cap._listen_once = Mock(
+        side_effect=[
+            {"ok": True, "text": "Richard"},
+            {"ok": True, "text": "现在几点了"},
+        ]
+    )
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "local"})
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    assert cap._listen_once.call_args_list[1].kwargs["timeout"] == 2.0
+
+
 def test_wake_preroll_uses_realtime_transcriber_when_configured() -> None:
     config = _config()
     config["converse"]["stt"] = {
@@ -294,6 +340,62 @@ def test_wake_once_waits_for_followup_command_after_wake_phrase_only() -> None:
     assert cap._route_text.call_args.kwargs["allow_fallback"] is True
 
 
+def test_wake_does_not_listen_while_playback_is_active() -> None:
+    cap = WakeCapability(_config())
+    cap._playback_state.is_active = Mock(return_value=True)
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._listen_once = Mock(return_value={"ok": True, "text": "Richard 现在几点了"})
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    assert result["reason"] == "speaking"
+    cap._wait_for_trigger.assert_not_called()
+    cap._listen_once.assert_not_called()
+
+
+def test_wake_discord_fallback_arms_after_playback_and_returns_idle() -> None:
+    config = _config()
+    config["converse"]["wakeword"]["min_interval_sec"] = 0
+    cap = WakeCapability(config)
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._listen_once = Mock(return_value={"ok": True, "text": "Richard 查天气"})
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "discord"})
+    cap._playback_state.generation = Mock(return_value=4)
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    assert cap._armed_followup_after_playback == {
+        "session_id": result["session_id"],
+        "turn_id": 1,
+        "after_generation": 4,
+    }
+    assert cap._followup_until == 0.0
+
+
+def test_wake_enters_followup_after_armed_playback_done() -> None:
+    now = [100.0]
+    cap = WakeCapability(_config(), clock=lambda: now[0])
+    cap._armed_followup_after_playback = {
+        "session_id": "s1",
+        "turn_id": 1,
+        "after_generation": 4,
+    }
+    cap._playback_state.generation = Mock(return_value=5)
+    cap._playback_state.is_active = Mock(return_value=False)
+    cap._wait_for_trigger = Mock(return_value=False)
+    cap._listen_once = Mock(return_value={"ok": True, "text": "现在几点了"})
+    cap._route_text = Mock(return_value={"turn_id": 2, "route": "local"})
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    assert cap._listen_once.called
+    assert cap._armed_followup_after_playback is None
+    assert cap._route_text.call_args.kwargs["text"] == "现在几点了"
+
+
 def test_wake_treats_repeated_wake_phrase_as_wake_only() -> None:
     config = _config()
     config["converse"]["wakeword"]["min_interval_sec"] = 0
@@ -338,7 +440,7 @@ def test_wake_followup_unmatched_text_allows_discord_fallback() -> None:
     assert cap._route_text.call_args.kwargs["allow_fallback"] is True
 
 
-def test_wake_ignores_single_character_asr_text_in_followup() -> None:
+def test_wake_exits_followup_on_single_character_asr_text() -> None:
     for short_text in ["嗯。", "嗯！", "啊。"]:
         config = _config()
         config["converse"]["wakeword"]["min_interval_sec"] = 0
@@ -356,9 +458,8 @@ def test_wake_ignores_single_character_asr_text_in_followup() -> None:
         result = cap.run(once=True, timeout=1.0, no_sound=True)
 
         assert result["ok"] is True
-        assert cap._route_text.call_count == 1
-        assert cap._route_text.call_args.kwargs["text"] == "帮我查一下明天的天气"
-        assert cap._route_text.call_args.kwargs["allow_fallback"] is True
+        assert result["reason"] == "single_character_asr"
+        assert cap._route_text.call_count == 0
 
 
 def test_wake_ignores_single_character_command_after_wake_phrase() -> None:
@@ -377,8 +478,69 @@ def test_wake_ignores_single_character_command_after_wake_phrase() -> None:
     result = cap.run(once=True, timeout=1.0, no_sound=True)
 
     assert result["ok"] is True
-    assert cap._route_text.call_count == 1
-    assert cap._route_text.call_args.kwargs["text"] == "帮我查天气"
+    assert result["reason"] == "single_character_asr"
+    assert cap._route_text.call_count == 0
+
+
+def test_wake_exits_followup_on_stop_phrase() -> None:
+    config = _config()
+    config["converse"]["wakeword"]["min_interval_sec"] = 0
+    cap = WakeCapability(config)
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._listen_once = Mock(
+        side_effect=[
+            {"ok": True, "text": "Richard"},
+            {"ok": True, "text": "不用了"},
+        ]
+    )
+    cap._route_text = Mock()
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    assert result["reason"] == "stop_phrase"
+    cap._route_text.assert_not_called()
+
+
+def test_wake_exits_followup_on_no_speech() -> None:
+    config = _config()
+    config["converse"]["wakeword"]["min_interval_sec"] = 0
+    cap = WakeCapability(config)
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._listen_once = Mock(
+        side_effect=[
+            {"ok": True, "text": "Richard"},
+            {"ok": False, "error_code": "speech.vad.no_speech"},
+        ]
+    )
+    cap._route_text = Mock()
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    assert result["reason"] == "speech.vad.no_speech"
+    cap._route_text.assert_not_called()
+
+
+def test_wake_followup_timeout_resets_turn_count_before_new_trigger() -> None:
+    now = [100.0]
+    config = _config()
+    config["converse"]["wakeword"]["min_interval_sec"] = 0
+    config["converse"]["wakeword"]["followup_timeout_sec"] = 1.0
+    config["converse"]["wakeword"]["max_followup_turns"] = 2
+    cap = WakeCapability(config, clock=lambda: now[0])
+    cap._followup_until = 100.5
+    cap._followup_turns = 1
+    now[0] = 101.0
+    cap._wait_for_trigger = Mock(return_value=True)
+    cap._listen_once = Mock(return_value={"ok": True, "text": "Richard 现在几点了"})
+    cap._route_text = Mock(return_value={"turn_id": 1, "route": "local"})
+
+    result = cap.run(once=True, timeout=1.0, no_sound=True)
+
+    assert result["ok"] is True
+    assert cap._followup_turns == 1
+    assert cap._in_followup() is True
 
 
 def test_wake_once_propagates_route_text_failure() -> None:

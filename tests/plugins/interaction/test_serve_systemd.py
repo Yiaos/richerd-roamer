@@ -16,6 +16,23 @@ def test_systemd_socket_matches_default_config() -> None:
     assert f"--socket {socket_path}" not in service
     assert "roamer serve --prepare" in service
     assert "--prewarm" not in service
-    assert "RuntimeDirectory=roamer" in service
-    assert "RuntimeDirectoryMode=0700" in service
+    assert "playback.lock" not in service
+    assert "RuntimeDirectory=" not in service
     assert "UMask=0077" in service
+
+
+def test_wake_systemd_does_not_own_shared_runtime_directory() -> None:
+    service = Path("systemd/roamer-wake.service").read_text()
+
+    assert "roamer wake" in service
+    assert "playback.lock" not in service
+    assert "RuntimeDirectory=" not in service
+    assert "UMask=0077" in service
+
+
+def test_installer_creates_shared_runtime_directory() -> None:
+    install = Path("install.sh").read_text()
+
+    assert "runtime_dir=" in install
+    assert "systemd-tmpfiles --create" in install
+    assert "/etc/tmpfiles.d/roamer.conf" in install
