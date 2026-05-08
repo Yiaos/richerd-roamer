@@ -59,6 +59,10 @@ serve:
   request_timeout_sec: 60.0
   fallback_to_cli: true
 
+runtime:
+  state_dir: /run/roamer
+  playback_stale_after_sec: 120.0
+
 logging:
   enabled: true
   level: INFO
@@ -115,6 +119,13 @@ converse:
       - 瑞彻德
       - 理查德
     followup_timeout_sec: 3.0
+    continuous_followup_enabled: true
+    max_followup_turns: 3
+    stop_phrases:
+      - 不用了
+      - 结束
+      - 停止
+      - 可以了
 
   # Minimal v1 intent whitelist seed
   intents:

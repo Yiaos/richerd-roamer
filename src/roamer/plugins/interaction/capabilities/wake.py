@@ -24,6 +24,8 @@ from roamer.plugins.interaction.services.endpointing import (
     EndpointConfig,
     EndpointRecorder,
 )
+from roamer.plugins.interaction.services.intent import match_intent
+from roamer.plugins.interaction.services.playback_state import PlaybackState
 from roamer.plugins.interaction.services.preroll_audio import PreRollAudioSource
 from roamer.plugins.interaction.services.realtime_listen import RealtimeEndpointTranscriber
 from roamer.plugins.interaction.services.wake_phrases import match_wake_phrase
@@ -38,6 +40,9 @@ class WakeCapability(Capability):
         self._last_trigger_at: float | None = None
         self._turn_id = 0
         self._clock = clock or time.monotonic
+        self._playback_state = PlaybackState.from_config(config)
+        self._armed_followup_after_playback: dict[str, Any] | None = None
+        self._followup_turns = 0
 
     def run(
         self,
@@ -67,8 +72,14 @@ class WakeCapability(Capability):
                 )
 
             while True:
+                self._expire_followup_if_needed(session_id=session_id)
                 wait_timeout = self._remaining_timeout(deadline)
-                if wait_timeout is not None and wait_timeout <= 0:
+                if (
+                    wait_timeout is not None
+                    and wait_timeout <= 0
+                    and not self._in_followup()
+                    and self._armed_followup_after_playback is None
+                ):
                     return success(completed=True, timeout=True, turns=[])
 
                 try:
@@ -92,6 +103,24 @@ class WakeCapability(Capability):
                     else request_context(uuid.uuid4().hex[:12])
                 )
                 with context:
+                    if self._playback_state.is_active():
+                        log_event(
+                            "wake",
+                            "listen_skipped_while_speaking",
+                            session_id=session_id,
+                            playback_generation=self._playback_state.generation(),
+                        )
+                        if once:
+                            return success(
+                                completed=True,
+                                reason="speaking",
+                                session_id=session_id,
+                                turns=[],
+                            )
+                        time.sleep(0.1)
+                        continue
+
+                    self._enter_followup_if_armed_playback_done()
                     in_followup_wait = self._in_followup()
                     if not in_followup_wait:
                         wait_started_at = self._clock()
@@ -101,8 +130,15 @@ class WakeCapability(Capability):
                             session_id=session_id,
                             timeout_sec=wait_timeout,
                         )
+                        trigger_wait_timeout = wait_timeout
+                        if self._armed_followup_after_playback is not None:
+                            trigger_wait_timeout = (
+                                0.2
+                                if wait_timeout is None
+                                else min(float(wait_timeout), 0.2)
+                            )
                         try:
-                            triggered = self._wait_for_trigger(wait_timeout)
+                            triggered = self._wait_for_trigger(trigger_wait_timeout)
                         except Exception as exc:
                             return error(
                                 "converse_wakeword_unavailable",
@@ -126,6 +162,10 @@ class WakeCapability(Capability):
                                     reason="min_interval",
                                 )
                                 continue
+                            self._disarm_followup_after_playback(
+                                reason="gpio_triggered",
+                                session_id=session_id,
+                            )
                         else:
                             log_event(
                                 "wake",
@@ -138,7 +178,11 @@ class WakeCapability(Capability):
                                 return success(completed=True, reason="wake_timeout", turns=[])
                             continue
 
-                    record_timeout = None if pre_roll_source is not None else wait_timeout
+                    followup_remaining = self._followup_remaining()
+                    if in_followup_wait:
+                        record_timeout = followup_remaining
+                    else:
+                        record_timeout = None if pre_roll_source is not None else wait_timeout
                     listen_started_at = self._clock()
                     log_event(
                         "wake",
@@ -163,6 +207,22 @@ class WakeCapability(Capability):
                         endpoint_metrics=listen_result.get("endpoint_metrics"),
                     )
                     if not listen_result.get("ok"):
+                        if (
+                            in_followup_wait
+                            and listen_result.get("error_code") == "speech.vad.no_speech"
+                        ):
+                            self._exit_followup(
+                                reason="speech.vad.no_speech",
+                                session_id=session_id,
+                            )
+                            if once:
+                                return success(
+                                    completed=True,
+                                    reason="speech.vad.no_speech",
+                                    session_id=session_id,
+                                    turns=[],
+                                    listen=listen_result,
+                                )
                         if once:
                             return success(
                                 completed=True,
@@ -188,6 +248,15 @@ class WakeCapability(Capability):
                             matched=False,
                             in_followup=self._in_followup(),
                         )
+                        if in_followup_wait:
+                            self._exit_followup(reason="empty_transcript", session_id=session_id)
+                            if once:
+                                return success(
+                                    completed=True,
+                                    reason="empty_transcript",
+                                    session_id=session_id,
+                                    turns=[],
+                                )
                         continue
                     match = match_wake_phrase(text, phrases)
                     in_followup = self._in_followup()
@@ -204,30 +273,29 @@ class WakeCapability(Capability):
                         in_followup=in_followup,
                     )
                     if not match.matched and not in_followup:
-                        log_event(
-                            "wake",
-                            "route_ignored",
-                            session_id=session_id,
-                            reason="wake_phrase_not_matched",
-                            text=text if log_transcripts else "",
-                            matched=False,
-                            in_followup=in_followup,
+                        intent_result = match_intent(
+                            text,
+                            self.config.get("converse", {}).get("intents", []),
                         )
-                        continue
+                        if not bool(intent_result.get("matched", False)):
+                            log_event(
+                                "wake",
+                                "route_ignored",
+                                session_id=session_id,
+                                reason="wake_phrase_not_matched",
+                                text=text if log_transcripts else "",
+                                matched=False,
+                                in_followup=in_followup,
+                            )
+                            continue
 
                     command_text = match.command_text if match.matched else text
                     if match.matched and self._is_wake_phrase_only(command_text, phrases):
-                        log_event(
-                            "wake",
-                            "route_ignored",
-                            session_id=session_id,
+                        self._enter_followup(
                             reason="wake_phrase_only",
-                            text=command_text if log_transcripts else "",
-                            matched=True,
-                            phrase=match.phrase,
-                            in_followup=in_followup,
+                            session_id=session_id,
+                            turn_id=None,
                         )
-                        self._enter_followup()
                         continue
                     if not command_text:
                         log_event(
@@ -240,7 +308,21 @@ class WakeCapability(Capability):
                             phrase=match.phrase,
                             in_followup=in_followup,
                         )
-                        self._enter_followup()
+                        self._enter_followup(
+                            reason="empty_command",
+                            session_id=session_id,
+                            turn_id=None,
+                        )
+                        continue
+                    if self._is_stop_phrase(command_text):
+                        self._exit_followup(reason="stop_phrase", session_id=session_id)
+                        if once:
+                            return success(
+                                completed=True,
+                                reason="stop_phrase",
+                                session_id=session_id,
+                                turns=[],
+                            )
                         continue
                     if self._is_too_short_asr_text(command_text):
                         log_event(
@@ -253,7 +335,17 @@ class WakeCapability(Capability):
                             in_followup=in_followup,
                         )
                         if match.matched or in_followup:
-                            self._enter_followup()
+                            self._exit_followup(
+                                reason="single_character_asr",
+                                session_id=session_id,
+                            )
+                            if once:
+                                return success(
+                                    completed=True,
+                                    reason="single_character_asr",
+                                    session_id=session_id,
+                                    turns=[],
+                                )
                         continue
 
                     self._turn_id += 1
@@ -292,10 +384,38 @@ class WakeCapability(Capability):
                         return dict(turn)
                     if pre_roll_source is not None:
                         pre_roll_source.clear()
-                    if turn.get("route") != "ignored":
-                        self._enter_followup()
+                    if turn.get("route") == "discord":
+                        self._arm_followup_after_playback(
+                            session_id=session_id,
+                            turn_id=int(turn.get("turn_id") or self._turn_id),
+                        )
+                    elif turn.get("route") != "ignored":
+                        self._followup_turns += 1
+                        if self._followup_turns >= self._max_followup_turns():
+                            self._exit_followup(
+                                reason="max_followup_turns",
+                                session_id=session_id,
+                                turn_id=self._turn_id,
+                            )
+                        else:
+                            self._enter_followup(
+                                reason="route_done",
+                                session_id=session_id,
+                                turn_id=self._turn_id,
+                            )
+                    elif in_followup:
+                        self._exit_followup(
+                            reason="route_ignored",
+                            session_id=session_id,
+                            turn_id=self._turn_id,
+                        )
                     if once:
-                        return success(completed=True, turns=[turn], wake_match=match.matched)
+                        return success(
+                            completed=True,
+                            session_id=session_id,
+                            turns=[turn],
+                            wake_match=match.matched,
+                        )
         finally:
             if pre_roll_source is not None:
                 pre_roll_source.stop()
@@ -308,16 +428,134 @@ class WakeCapability(Capability):
     def _in_followup(self) -> bool:
         return self._clock() < self._followup_until
 
-    def _enter_followup(self) -> None:
+    def _followup_remaining(self) -> float:
+        return max(0.0, self._followup_until - self._clock())
+
+    def _enter_followup(
+        self,
+        *,
+        reason: str,
+        session_id: str | None = None,
+        turn_id: int | None = None,
+    ) -> None:
         wake_cfg = self.config.get("converse", {}).get("wakeword", {})
+        if not bool(wake_cfg.get("continuous_followup_enabled", True)):
+            return
         timeout = float(wake_cfg.get("followup_timeout_sec", 3.0))
+        was_active = self._in_followup()
         self._followup_until = self._clock() + timeout
+        log_event(
+            "wake",
+            "followup_refresh" if was_active else "followup_start",
+            session_id=session_id,
+            turn_id=turn_id,
+            reason=reason,
+            timeout_sec=timeout,
+            remaining_sec=timeout,
+            followup_until=self._followup_until,
+        )
+
+    def _exit_followup(
+        self,
+        *,
+        reason: str,
+        session_id: str | None = None,
+        turn_id: int | None = None,
+    ) -> None:
+        was_active = self._in_followup()
+        self._followup_until = 0.0
+        self._followup_turns = 0
+        log_event(
+            "wake",
+            "followup_exit",
+            session_id=session_id,
+            turn_id=turn_id,
+            reason=reason,
+            was_active=was_active,
+            remaining_sec=0.0,
+        )
+
+    def _expire_followup_if_needed(self, *, session_id: str | None = None) -> None:
+        if self._followup_until <= 0.0 or self._in_followup():
+            return
+        self._exit_followup(reason="followup_timeout", session_id=session_id)
+
+    def _max_followup_turns(self) -> int:
+        wake_cfg = self.config.get("converse", {}).get("wakeword", {})
+        return max(1, int(wake_cfg.get("max_followup_turns", 3)))
+
+    def _arm_followup_after_playback(self, *, session_id: str, turn_id: int) -> None:
+        self._followup_until = 0.0
+        self._armed_followup_after_playback = {
+            "session_id": session_id,
+            "turn_id": turn_id,
+            "after_generation": self._playback_state.generation(),
+        }
+        log_event(
+            "wake",
+            "followup_armed_after_playback",
+            session_id=session_id,
+            turn_id=turn_id,
+            after_generation=self._armed_followup_after_playback["after_generation"],
+            armed_after_generation=self._armed_followup_after_playback["after_generation"],
+        )
+
+    def _disarm_followup_after_playback(
+        self,
+        *,
+        reason: str,
+        session_id: str | None = None,
+    ) -> None:
+        if self._armed_followup_after_playback is None:
+            return
+        armed = self._armed_followup_after_playback
+        self._armed_followup_after_playback = None
+        log_event(
+            "wake",
+            "followup_disarmed",
+            session_id=session_id or armed.get("session_id"),
+            turn_id=armed.get("turn_id"),
+            reason=reason,
+        )
+
+    def _enter_followup_if_armed_playback_done(self) -> bool:
+        armed = self._armed_followup_after_playback
+        if armed is None:
+            return False
+        if self._playback_state.is_active():
+            return False
+        generation = self._playback_state.generation()
+        if generation <= int(armed.get("after_generation") or 0):
+            return False
+
+        self._armed_followup_after_playback = None
+        log_event(
+            "wake",
+            "playback_done_observed",
+            session_id=armed.get("session_id"),
+            turn_id=armed.get("turn_id"),
+            playback_generation=generation,
+        )
+        self._enter_followup(
+            reason="playback_done",
+            session_id=str(armed.get("session_id") or ""),
+            turn_id=int(armed.get("turn_id") or 0) or None,
+        )
+        return True
 
     def _is_too_short_asr_text(self, text: str) -> bool:
         meaningful_chars = [
             char for char in str(text or "") if char.isalnum() or "\u4e00" <= char <= "\u9fff"
         ]
         return len(meaningful_chars) <= 1
+
+    def _is_stop_phrase(self, text: str) -> bool:
+        wake_cfg = self.config.get("converse", {}).get("wakeword", {})
+        phrases = [str(phrase) for phrase in wake_cfg.get("stop_phrases", [])]
+        normalized = "".join(
+            char for char in str(text or "") if char.isalnum() or "\u4e00" <= char <= "\u9fff"
+        )
+        return any(phrase and phrase in normalized for phrase in phrases)
 
     def _accept_trigger(self) -> bool:
         wake_cfg = self.config.get("converse", {}).get("wakeword", {})

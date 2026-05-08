@@ -9,8 +9,6 @@ WorkingDirectory=/home/richerd/worksp/richerd-roamer
 ExecStart=/home/richerd/.venv/roamer/bin/roamer serve --prepare
 Restart=on-failure
 RestartSec=2
-RuntimeDirectory=roamer
-RuntimeDirectoryMode=0700
 UMask=0077
 
 [Install]
