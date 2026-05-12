@@ -25,6 +25,7 @@ Roamer exposes action-based commands with deterministic JSON output so OpenClaw 
 - `roamer motion position`
 - `roamer motion locate`
 - `roamer motion home [--wait]`
+- `roamer motion goto --point <name> [--angle <deg>] [--wait]`
 - `roamer motion goto --x <x> --y <y> [--angle <deg>] [--wait]`
 
 ### Utility commands
@@ -64,6 +65,8 @@ roamer motion status
 roamer motion position
 roamer motion locate
 roamer motion home --wait
+roamer motion goto --point 阳台 --wait
+roamer motion goto --point 阳台 --angle 90 --wait
 roamer motion goto --x 25500 --y 25300 --wait
 roamer motion goto --x 25500 --y 25300 --angle 90 --wait
 

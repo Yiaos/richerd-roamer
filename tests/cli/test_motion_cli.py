@@ -42,6 +42,25 @@ def test_motion_goto_wait_dispatches_run_action(monkeypatch) -> None:
     assert '"command": "motion.goto"' in result.output
 
 
+def test_motion_goto_point_dispatches_run_action(monkeypatch) -> None:
+    called = {}
+
+    def _fake_run(action_name, **kwargs):
+        called["action_name"] = action_name
+        called["kwargs"] = kwargs
+        return {"ok": True, "accepted": True, "waiting": False}
+
+    monkeypatch.setattr("roamer.cli.main.run_action", _fake_run)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["motion", "goto", "--point", "阳台"])
+
+    assert result.exit_code == 0
+    assert called["action_name"] == "motion.goto"
+    assert called["kwargs"] == {"point": "阳台", "wait": False}
+    assert '"command": "motion.goto"' in result.output
+
+
 def test_motion_goto_with_angle_dispatches_run_action(monkeypatch) -> None:
     called = {}
 
@@ -58,6 +77,25 @@ def test_motion_goto_with_angle_dispatches_run_action(monkeypatch) -> None:
     assert result.exit_code == 0
     assert called["action_name"] == "motion.goto"
     assert called["kwargs"] == {"x": 100, "y": 200, "angle": 277, "wait": False}
+    assert '"command": "motion.goto"' in result.output
+
+
+def test_motion_goto_point_with_angle_dispatches_run_action(monkeypatch) -> None:
+    called = {}
+
+    def _fake_run(action_name, **kwargs):
+        called["action_name"] = action_name
+        called["kwargs"] = kwargs
+        return {"ok": True, "accepted": True, "waiting": False}
+
+    monkeypatch.setattr("roamer.cli.main.run_action", _fake_run)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["motion", "goto", "--point", "阳台", "--angle", "277"])
+
+    assert result.exit_code == 0
+    assert called["action_name"] == "motion.goto"
+    assert called["kwargs"] == {"point": "阳台", "angle": 277, "wait": False}
     assert '"command": "motion.goto"' in result.output
 
 
@@ -78,6 +116,22 @@ def test_motion_home_wait_dispatches_run_action(monkeypatch) -> None:
     assert called["action_name"] == "motion.home"
     assert called["kwargs"] == {"wait": True}
     assert '"command": "motion.home"' in result.output
+
+
+def test_motion_goto_requires_point_or_coordinates() -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["motion", "goto"])
+
+    assert result.exit_code == 2
+    assert "Must provide --point or both --x and --y" in result.output
+
+
+def test_motion_goto_rejects_point_with_coordinates() -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["motion", "goto", "--point", "阳台", "--x", "100", "--y", "200"])
+
+    assert result.exit_code == 2
+    assert "Cannot combine --point with --x/--y" in result.output
 
 
 def test_motion_status_missing_valetudo_config_returns_contract_error(tmp_path) -> None:

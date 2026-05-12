@@ -521,17 +521,34 @@ def motion_home(ctx: click.Context, wait_for_done: bool) -> None:
 
 
 @motion.command("goto")
-@click.option("--x", type=int, required=True, help="Target X coordinate")
-@click.option("--y", type=int, required=True, help="Target Y coordinate")
+@click.option("--point", type=str, required=False, help="Named point from motion.named_points")
+@click.option("--x", type=int, required=False, help="Target X coordinate")
+@click.option("--y", type=int, required=False, help="Target Y coordinate")
 @click.option("--angle", type=int, required=False, help="Optional target heading angle")
 @click.option("--wait", "wait_for_done", is_flag=True, help="Wait until arrived or timeout")
 @click.pass_context
-def motion_goto(ctx: click.Context, x: int, y: int, angle: int | None, wait_for_done: bool) -> None:
-    """Navigate robot to target coordinates."""
-    _ensure_motion_plugin_registered(ctx.obj["config"])
-    params = {"x": x, "y": y, "wait": wait_for_done}
+def motion_goto(
+    ctx: click.Context,
+    point: str | None,
+    x: int | None,
+    y: int | None,
+    angle: int | None,
+    wait_for_done: bool,
+) -> None:
+    """Navigate robot to target coordinates or named point."""
+    if point:
+        if x is not None or y is not None:
+            raise click.UsageError("Cannot combine --point with --x/--y")
+        params = {"point": point, "wait": wait_for_done}
+    else:
+        if x is None or y is None:
+            raise click.UsageError("Must provide --point or both --x and --y")
+        params = {"x": x, "y": y, "wait": wait_for_done}
+
     if angle is not None:
         params["angle"] = angle
+
+    _ensure_motion_plugin_registered(ctx.obj["config"])
     result = run_action("motion.goto", **params)
     emit_contract_result(ctx, "motion.goto", result)
 

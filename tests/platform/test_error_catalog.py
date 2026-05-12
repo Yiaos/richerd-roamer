@@ -28,6 +28,8 @@ def test_motion_namespace_codes_are_stable():
     """Motion namespace codes should remain backward compatible."""
     assert ErrorCode.MOTION_STATUS_UNSUPPORTED.value == "motion.status.unsupported"
     assert ErrorCode.MOTION_POSITION_UNAVAILABLE.value == "motion.position.unavailable"
+    assert ErrorCode.MOTION_POINT_UNKNOWN.value == "motion.point.unknown"
+    assert ErrorCode.MOTION_POINT_INVALID.value == "motion.point.invalid"
     assert ErrorCode.MOTION_GOTO_GUARD_FAILED.value == "motion.goto.guard_failed"
     assert ErrorCode.MOTION_GOTO_TIMEOUT.value == "motion.goto.timeout"
     assert ErrorCode.MOTION_HOME_TIMEOUT.value == "motion.home.timeout"

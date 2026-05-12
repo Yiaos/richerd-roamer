@@ -56,6 +56,8 @@ class ErrorCode(StrEnum):
     DEPENDENCY_BLUETOOTH_BLUETOOTHCTL_MISSING = "dependency.bluetooth.bluetoothctl_missing"
     MOTION_STATUS_UNSUPPORTED = "motion.status.unsupported"
     MOTION_POSITION_UNAVAILABLE = "motion.position.unavailable"
+    MOTION_POINT_UNKNOWN = "motion.point.unknown"
+    MOTION_POINT_INVALID = "motion.point.invalid"
     MOTION_GOTO_GUARD_FAILED = "motion.goto.guard_failed"
     MOTION_GOTO_TIMEOUT = "motion.goto.timeout"
     MOTION_HOME_TIMEOUT = "motion.home.timeout"
@@ -122,6 +124,8 @@ ERROR_EXIT_CATEGORY: dict[str, ExitCategory] = {
     ErrorCode.DEPENDENCY_TTS_PIPER_MODEL_MISSING.value: ExitCategory.DEPENDENCY,
     ErrorCode.DEPENDENCY_BLUETOOTH_BLUETOOTHCTL_MISSING.value: ExitCategory.DEPENDENCY,
     ErrorCode.CONFIG_INVALID.value: ExitCategory.USAGE,
+    ErrorCode.MOTION_POINT_UNKNOWN.value: ExitCategory.USAGE,
+    ErrorCode.MOTION_POINT_INVALID.value: ExitCategory.USAGE,
     ErrorCode.MOTION_GOTO_GUARD_FAILED.value: ExitCategory.USAGE,
     ErrorCode.DRIVER_NOT_FOUND.value: ExitCategory.USAGE,
     ErrorCode.ACTION_NOT_FOUND.value: ExitCategory.USAGE,

@@ -29,6 +29,7 @@ class _NonWaitDriver:
 
 class _WaitSuccessDriver(_NonWaitDriver):
     def __init__(self):
+        super().__init__()
         self._status_calls = 0
 
     def get_status(self):
@@ -60,14 +61,15 @@ class _WaitErrorDriver(_NonWaitDriver):
         return {"ok": True, "status": "error"}
 
 
-def _motion_cfg(wait_timeout: float) -> dict:
-    return {
-        "motion": {
-            "wait_timeout_sec": wait_timeout,
-            "poll_interval_sec": 0.01,
-            "arrival_tolerance": 20,
-        }
+def _motion_cfg(wait_timeout: float, named_points: dict | None = None) -> dict:
+    motion = {
+        "wait_timeout_sec": wait_timeout,
+        "poll_interval_sec": 0.01,
+        "arrival_tolerance": 20,
     }
+    if named_points is not None:
+        motion["named_points"] = named_points
+    return {"motion": motion}
 
 
 def test_goto_guard_fails(monkeypatch) -> None:
@@ -99,6 +101,79 @@ def test_goto_without_wait_accepts(monkeypatch) -> None:
     assert driver.last_goto == {"x": 100, "y": 100, "angle": None}
 
 
+def test_goto_named_point_resolves_coordinates(monkeypatch) -> None:
+    driver = _NonWaitDriver()
+    monkeypatch.setattr(
+        "roamer.plugins.motion.actions.goto.ValetudoMotionDriver",
+        lambda cfg: driver,
+    )
+
+    action = MotionGotoAction(
+        config=_motion_cfg(
+            wait_timeout=1,
+            named_points={"阳台": {"x": 2082, "y": 2377, "angle": 111}},
+        )
+    )
+    result = action.run(point="阳台", wait=False)
+
+    assert result["ok"] is True
+    assert result["point_name"] == "阳台"
+    assert result["target_source"] == "named_point"
+    assert result["resolved_target"] == {"x": 2082, "y": 2377, "angle": 111}
+    assert result["target"] == {"x": 2082, "y": 2377, "angle": 111}
+    assert driver.last_goto == {"x": 2082, "y": 2377, "angle": 111}
+
+
+def test_goto_named_point_angle_override(monkeypatch) -> None:
+    driver = _NonWaitDriver()
+    monkeypatch.setattr(
+        "roamer.plugins.motion.actions.goto.ValetudoMotionDriver",
+        lambda cfg: driver,
+    )
+
+    action = MotionGotoAction(
+        config=_motion_cfg(
+            wait_timeout=1,
+            named_points={"阳台": {"x": 2082, "y": 2377, "angle": 111}},
+        )
+    )
+    result = action.run(point="阳台", angle=277, wait=False)
+
+    assert result["ok"] is True
+    assert result["resolved_target"] == {"x": 2082, "y": 2377, "angle": 277}
+    assert driver.last_goto == {"x": 2082, "y": 2377, "angle": 277}
+
+
+def test_goto_named_point_unknown_returns_stable_error(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "roamer.plugins.motion.actions.goto.ValetudoMotionDriver",
+        lambda cfg: _NonWaitDriver(),
+    )
+
+    action = MotionGotoAction(config=_motion_cfg(wait_timeout=1, named_points={}))
+    result = action.run(point="阳台", wait=False)
+
+    assert result["ok"] is False
+    assert result["error_code"] == ErrorCode.MOTION_POINT_UNKNOWN
+    assert result["point_name"] == "阳台"
+
+
+def test_goto_named_point_invalid_returns_stable_error(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "roamer.plugins.motion.actions.goto.ValetudoMotionDriver",
+        lambda cfg: _NonWaitDriver(),
+    )
+
+    action = MotionGotoAction(
+        config=_motion_cfg(wait_timeout=1, named_points={"阳台": {"x": "bad", "y": 2377}})
+    )
+    result = action.run(point="阳台", wait=False)
+
+    assert result["ok"] is False
+    assert result["error_code"] == ErrorCode.MOTION_POINT_INVALID
+    assert result["point_name"] == "阳台"
+
+
 def test_goto_with_angle_forwards_to_driver(monkeypatch) -> None:
     driver = _NonWaitDriver()
     monkeypatch.setattr(
@@ -126,6 +201,27 @@ def test_goto_wait_success(monkeypatch) -> None:
     assert result["ok"] is True
     assert result["waiting"] is True
     assert result["status"] == "idle"
+
+
+def test_goto_named_point_wait_success_preserves_metadata(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "roamer.plugins.motion.actions.goto.ValetudoMotionDriver",
+        lambda cfg: _WaitSuccessDriver(),
+    )
+
+    action = MotionGotoAction(
+        config=_motion_cfg(
+            wait_timeout=1,
+            named_points={"阳台": {"x": 100, "y": 100, "angle": 90}},
+        )
+    )
+    result = action.run(point="阳台", wait=True)
+
+    assert result["ok"] is True
+    assert result["waiting"] is True
+    assert result["point_name"] == "阳台"
+    assert result["target_source"] == "named_point"
+    assert result["resolved_target"] == {"x": 100, "y": 100, "angle": 90}
 
 
 def test_goto_wait_timeout(monkeypatch) -> None:
