@@ -79,7 +79,11 @@ class MotionGotoAction:
                         "y": int(position_result["y"]),
                         "angle": int(position_result.get("angle", 0)),
                     }
-                    last_distance = self._driver.distance_to_target(position, target["x"], target["y"])
+                    last_distance = self._driver.distance_to_target(
+                        position,
+                        target["x"],
+                        target["y"],
+                    )
 
                     reached = last_distance <= self._arrival_tolerance
                     if last_status in {"idle", "docked"} and reached:
