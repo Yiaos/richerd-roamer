@@ -1,0 +1,26 @@
+runtime:
+  state_dir: /run/roamer
+capabilities:
+  motion:
+    driver: ros2_nav
+bridges:
+  control:
+    socket: /run/roamer/roamer.sock
+world_model:
+  places:
+    阳台:
+      pose:
+        x: 2082
+        y: 2377
+        angle: 111
+        frame: valetudo_pixel
+      radius: 150
+      source: config
+    米多和阿良的房间:
+      pose:
+        x: 2540
+        y: 2565
+        angle: 266
+        frame: valetudo_pixel
+      radius: 150
+      source: config

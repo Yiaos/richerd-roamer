@@ -187,6 +187,75 @@ Roamer's production install on the Pi is expected to run from:
 - daemon: `roamer-serve.service`
 - hands-free wake: `roamer-wake.service`
 
+## roamerd Migration Status
+
+The new body runtime lives under `src/roamerd/` and is intended to replace the
+old command-centered orchestration during Phase E. `roamerd` is the long-lived
+runtime; legacy CLI/socket entry points are transitional adapters that should
+route through ControlBridge and PolicyEngine rather than calling the old
+`wake -> converse -> speak` chain directly.
+
+The draft cutover service is `systemd/roamerd.service`:
+
+```text
+python -m roamerd --config config/roamerd.yaml serve
+```
+
+Before replacing `roamer-serve.service` / `roamer-wake.service`, run
+`scripts/roamerd-pi-preflight.sh` on the Pi and complete live acceptance for
+SU-03T, ALSA, fswebcam, Bluetooth, ROS 2, Valetudo, OpenClaw, and network ASR.
+Pi OS target for Phase E is Ubuntu 24.04, matching the ROS 2 Jazzy deb packages
+used by the design. A Debian 13 Raspberry Pi OS install is not a passing Phase E
+target unless the design is explicitly changed to a non-deb ROS2 installation
+path.
+
+Phase E operator sequence:
+
+1. Back up current Pi config/secrets and hardware facts before any OS work:
+   `config.yaml`, `/home/richerd/.config/roamer/env`, `/etc/roamer/roamer.env`,
+   systemd unit/drop-in output, `arecord -l`, `aplay -l`, Bluetooth devices, and
+   Tailscale status. The non-destructive helper is
+   `scripts/roamerd-pi-collect-phase-e-facts.sh`.
+2. Reimage or upgrade the Pi to Ubuntu 24.04 arm64, then install ROS 2 Jazzy.
+   The guarded helper for dependency/bootstrap work after the OS is installed is
+   `scripts/roamerd-pi-ubuntu24-bootstrap.sh`; it requires
+   `ROAMER_BOOTSTRAP_CONFIRM_INSTALL=1`.
+3. Verify ROS 2 with
+   `source /opt/ros/jazzy/setup.bash && python3 -c "import rclpy"`.
+4. Recreate `/home/richerd/.venv/roamer` and install
+   `python -m pip install -e ".[dev,speech,gpio]"`.
+5. Run `PYTHON=/home/richerd/.venv/roamer/bin/python bash scripts/roamerd-pi-preflight.sh`.
+6. Only after preflight passes, run and record live SU-03T, ALSA, fswebcam,
+   Bluetooth, ROS 2, Valetudo, OpenClaw, and network ASR acceptance. The current
+   runner is `scripts/roamerd-pi-phase-e-acceptance.sh` and requires
+   `ROAMER_ACCEPTANCE_CONFIRM_LIVE=1`. The current blocker is tracked in issue
+   #21.
+
+Remaining transitional adapters:
+
+- `src/roamerd/compat/legacy_config.py` maps existing `config.yaml` values into
+  typed `RoamerdConfig`.
+- `src/roamerd/compat/legacy_actions.py` keeps migration-era action naming and
+  command compatibility.
+- Legacy leaf drivers remain where they preserve hardware I/O behavior:
+  ALSA/FunASR listening, Edge/Piper/ALSA/BlueZ speech, fswebcam vision, and
+  SU-03T/OpenWakeword wake detection.
+- `src/roamerd/capabilities/reminder.py` is intentionally non-persistent and
+  transitional until reminders are delegated to a higher-level task system.
+- `bridges.control.compat.fallback_to_cli` remains a migration-only escape hatch
+  and should be removed after Phase E.
+
+Removal plan:
+
+1. Land `roamerd` behind the draft service while old services remain installed.
+2. Run the Pi preflight and live acceptance checklist from the design notes.
+3. Switch systemd startup to `roamerd.service` and stop the old serve/wake
+   services.
+4. Keep the `roamer` CLI as a thin ControlBridge client for one migration
+   window.
+5. Remove compatibility-only adapters once no scripts depend on old action
+   envelopes, detached reminders, or `fallback_to_cli`.
+
 SU-03T wake wiring:
 
 ```text
