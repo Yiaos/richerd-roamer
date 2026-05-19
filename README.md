@@ -27,6 +27,7 @@ Roamer exposes action-based commands with deterministic JSON output so OpenClaw 
 - `roamer motion home [--wait]`
 - `roamer motion goto --point <name> [--angle <deg>] [--wait]`
 - `roamer motion goto --x <x> --y <y> [--angle <deg>] [--wait]`
+- Note: `goto --point` reflects active branch/runtime capability when present; do not assume it is part of default shipped `master` unless merge status says so.
 
 ### Utility commands
 
@@ -69,6 +70,7 @@ roamer motion goto --point 阳台 --wait
 roamer motion goto --point 阳台 --angle 90 --wait
 roamer motion goto --x 25500 --y 25300 --wait
 roamer motion goto --x 25500 --y 25300 --angle 90 --wait
+# note: executable named points use config as the execution source of truth; `docs/valetudo-locations.md` remains grounding / verification evidence and should be re-checked if point trust is in doubt.
 
 # audio utils
 roamer audio record --duration 5 --output /tmp/rec.wav

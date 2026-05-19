@@ -93,10 +93,11 @@ See `references/commands.md` for the command catalog and current caveats.
 ## Motion safety workflow
 
 1. Run `roamer motion status` or `roamer motion position`.
-2. If using a named place, read `docs/valetudo-locations.md` and copy the latest verified coordinates.
-3. For docking, use `roamer motion home --wait`.
-4. For navigation, use `roamer motion goto --x <x> --y <y> [--angle <deg>] [--wait]`.
-5. Verify result JSON; if movement fails, report the exact `error_code`/`message`.
+2. If using a named place **on current master**, read `docs/valetudo-locations.md` and manually copy the latest verified coordinates into `roamer motion goto --x ... --y ...`.
+3. If/when executable named points are present on the active branch/runtime, treat `motion.named_points` config as the **execution source of truth** and `docs/valetudo-locations.md` as **grounding / verification evidence**. Config presence alone does not prove the semantic place is trustworthy; if config/docs disagree, treat it as embodiment risk rather than ordinary docs drift.
+4. For docking, use `roamer motion home --wait`.
+5. For navigation, use `roamer motion goto --x <x> --y <y> [--angle <deg>] [--wait]` unless the active branch/runtime explicitly supports a named-point form.
+6. Verify result JSON; if movement fails, report the exact `error_code`/`message`.
 
 Do not invent natural-language navigation or teleop features. Current `motion` means base mobility only: status, position, locate, home, goto.
 

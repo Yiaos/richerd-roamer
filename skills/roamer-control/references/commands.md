@@ -6,6 +6,7 @@
 - `listen` exists but still needs real-world tuning for USB/audio-device enumeration and VAD threshold stability.
 - `init` owns startup initialization such as Bluetooth speaker connection.
 - `motion` is Valetudo-backed base mobility for the Roborock S5: `status`, `position`, `locate`, `home`, `goto`.
+- Current `master` only documents raw-coordinate `goto`; executable named-point navigation may exist on an active branch/runtime, but should not be assumed unless that branch/runtime explicitly supports it.
 
 ## Output contract
 
@@ -36,6 +37,12 @@ roamer motion home --wait
 roamer motion goto --x 25500 --y 25300 --wait
 roamer motion goto --x 25500 --y 25300 --angle 90 --wait
 ```
+
+Named-point note:
+
+- On current `master`, a "named place" still means manually reading `docs/valetudo-locations.md` and copying the verified coordinates into `roamer motion goto --x ... --y ...`.
+- If an active branch/runtime explicitly supports executable named points, treat `motion.named_points` as the **execution source of truth** and `docs/valetudo-locations.md` as **grounding / verification evidence**.
+- Config presence alone does not prove a semantic place is trustworthy; config/docs disagreement should be treated as embodiment risk, not ordinary docs drift.
 
 Current Valetudo facts:
 
