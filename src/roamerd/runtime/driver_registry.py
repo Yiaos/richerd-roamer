@@ -137,10 +137,7 @@ def load_driver(category: str, name: str, config: DriverConfig | None = None) ->
 
 
 def registered_drivers() -> dict[str, list[str]]:
-    return {
-        category: sorted(drivers)
-        for category, drivers in sorted(DRIVER_REGISTRY.items())
-    }
+    return {category: sorted(drivers) for category, drivers in sorted(DRIVER_REGISTRY.items())}
 
 
 def _int_config(config: DriverConfig, key: str, default: int) -> int:

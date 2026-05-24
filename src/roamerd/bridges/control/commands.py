@@ -153,7 +153,7 @@ class ControlCommandRouter:
             op=request.op,
             action_id=action_id,
             error={
-                "code": str(event.payload.get("error", event.event_type)).upper(),
+                "code": _terminal_error_code(event),
                 "message": event.event_type,
             },
         )
@@ -192,8 +192,7 @@ class ControlCommandRouter:
             request,
             {
                 "actions": [
-                    action.model_dump(mode="json")
-                    for action in self._actions.get_running_actions()
+                    action.model_dump(mode="json") for action in self._actions.get_running_actions()
                 ]
             },
         )
@@ -213,3 +212,14 @@ class ControlCommandRouter:
             action_id=action_id,
             result=result,
         )
+
+
+def _terminal_error_code(event: Event) -> str:
+    error = event.payload.get("error")
+    if isinstance(error, dict):
+        code = error.get("code") or error.get("error_code") or error.get("reason")
+        if isinstance(code, str) and code:
+            return code
+    if isinstance(error, str) and error:
+        return error
+    return event.event_type.upper()

@@ -132,9 +132,7 @@ def _map_audio(config: RoamerdConfig, legacy: Mapping[str, object]) -> None:
     speech_alsa = config.capabilities.speech.alsa
     hearing_alsa.capture_device = _string(alsa.get("capture_device"), hearing_alsa.capture_device)
     speech_alsa.capture_device = hearing_alsa.capture_device
-    speech_alsa.playback_device = _string(
-        alsa.get("playback_device"), speech_alsa.playback_device
-    )
+    speech_alsa.playback_device = _string(alsa.get("playback_device"), speech_alsa.playback_device)
     hearing_alsa.playback_device = speech_alsa.playback_device
     hearing_alsa.sample_rate = _int(alsa.get("sample_rate"), hearing_alsa.sample_rate)
     speech_alsa.sample_rate = hearing_alsa.sample_rate
@@ -148,9 +146,7 @@ def _map_speech(config: RoamerdConfig, legacy: Mapping[str, object]) -> None:
     bluetooth = _section(legacy, "bluetooth")
     config.capabilities.speech.tts.piper_binary = _string(piper.get("binary"))
     config.capabilities.speech.tts.piper_model = _string(piper.get("model"))
-    config.capabilities.speech.tts.edge_voice = _string(
-        edge.get("voice"), "zh-CN-YunxiNeural"
-    )
+    config.capabilities.speech.tts.edge_voice = _string(edge.get("voice"), "zh-CN-YunxiNeural")
     speaker_mac = bluetooth.get("speaker_mac")
     config.capabilities.speech.bluetooth.speaker_mac = (
         str(speaker_mac) if speaker_mac is not None else None
@@ -220,9 +216,7 @@ def _map_bridges(config: RoamerdConfig, legacy: Mapping[str, object]) -> None:
 def _map_runtime(config: RoamerdConfig, legacy: Mapping[str, object]) -> None:
     runtime = _section(legacy, "runtime")
     config.runtime.state_dir = _string(runtime.get("state_dir"), "/run/roamer")
-    config.runtime.playback_stale_after_sec = _float(
-        runtime.get("playback_stale_after_sec"), 120.0
-    )
+    config.runtime.playback_stale_after_sec = _float(runtime.get("playback_stale_after_sec"), 120.0)
 
 
 def _map_ros2(config: RoamerdConfig, legacy: Mapping[str, object]) -> None:

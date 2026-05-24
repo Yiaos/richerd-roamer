@@ -41,8 +41,7 @@ class EndpointDetector:
             self._silence_ms += self._config.chunk_ms
         total_ms = len(self._recording) * self._config.chunk_ms
         if self._speech_ms >= self._config.min_duration_ms and (
-            self._silence_ms >= self._config.silence_ms
-            or total_ms >= self._config.max_duration_ms
+            self._silence_ms >= self._config.silence_ms or total_ms >= self._config.max_duration_ms
         ):
             return self._finish()
         return None

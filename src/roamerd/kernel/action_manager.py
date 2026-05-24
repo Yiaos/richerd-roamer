@@ -150,9 +150,7 @@ class ActionManager:
             action,
             {"action_id": action.action_id, "reason": reason},
         )
-        self._timeout_tasks[action_id] = asyncio.create_task(
-            self._cancel_after_timeout(action_id)
-        )
+        self._timeout_tasks[action_id] = asyncio.create_task(self._cancel_after_timeout(action_id))
 
     async def mark_cancelled(self, action_id: str, reason: str) -> None:
         action = self._actions[action_id]

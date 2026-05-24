@@ -21,8 +21,10 @@ def read_jsonl(path: Path) -> list[dict[str, object]]:
 def test_log_writes_jsonl_with_context_and_request_id(tmp_path: Path) -> None:
     logger = TraceLogger(TraceLoggerConfig(log_dir=tmp_path), session_id="session-1")
 
-    with logger.bind_turn("turn-1"), logger.bind_action("action-1"), logger.bind_correlation(
-        "corr-1"
+    with (
+        logger.bind_turn("turn-1"),
+        logger.bind_action("action-1"),
+        logger.bind_correlation("corr-1"),
     ):
         logger.log(
             "action.started",

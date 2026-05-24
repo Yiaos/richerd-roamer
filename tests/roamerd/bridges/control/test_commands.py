@@ -131,6 +131,48 @@ async def test_control_router_completed_wait_times_out_and_detaches_action() -> 
 
 
 @pytest.mark.asyncio
+async def test_control_router_completed_wait_returns_error_when_action_fails() -> None:
+    bus = EventBus()
+    actions = ActionManager()
+    state = StateManager(session_id="session-1")
+    world = WorldModel()
+    policy = PolicyEngine(session_id="session-1")
+    await actions.start(bus)
+    await state.start(bus)
+    await policy.start(bus, actions, state, world)
+    router = ControlCommandRouter(
+        event_bus=bus,
+        action_manager=actions,
+        policy_engine=policy,
+        state_manager=state,
+    )
+
+    async def fail_action(event: Event) -> None:
+        await actions.fail_action(str(event.payload["action_id"]), {"code": "BOOM"})
+
+    bus.subscribe("action.started", fail_action)
+
+    bus_task = asyncio.create_task(bus.run())
+    try:
+        response = await router.dispatch(
+            RequestEnvelope(
+                request_id="completed-failed",
+                op="run",
+                wait="completed",
+                timeout_ms=1000,
+                args={"action": "time.now", "resource": "none", "payload": {}},
+            )
+        )
+    finally:
+        await bus.stop()
+        await bus_task
+
+    assert response.status == "error"
+    assert response.error == {"code": "BOOM", "message": "action.failed"}
+    assert response.action_id is not None
+
+
+@pytest.mark.asyncio
 async def test_control_router_action_status_and_list() -> None:
     bus = EventBus()
     actions = ActionManager()

@@ -19,7 +19,5 @@ def test_phase_progress_checklists_are_tracked_artifacts() -> None:
     progress_dir = Path("migration/progress")
 
     for phase in ["a", "b1", "b2", "b3", "c", "d", "e"]:
-        checklist = (progress_dir / f"phase-{phase}-checklist.md").read_text(
-            encoding="utf-8"
-        )
+        checklist = (progress_dir / f"phase-{phase}-checklist.md").read_text(encoding="utf-8")
         assert "Verification Log" in checklist

@@ -17,9 +17,7 @@ class CognitionRequestNeeded(BaseModel):
 
 class CognitionResponseReceived(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    EVENT_TYPE: ClassVar[Literal["cognition.response_received"]] = (
-        "cognition.response_received"
-    )
+    EVENT_TYPE: ClassVar[Literal["cognition.response_received"]] = "cognition.response_received"
 
     kind: str
     payload: JSONDict

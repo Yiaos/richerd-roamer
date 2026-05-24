@@ -107,10 +107,12 @@ Required evidence:
 - `pytest tests/roamerd/runtime tests/roamerd/docs tests/roamerd/compat tests/roamerd/config tests/roamerd/contracts_migration -q` -> 30 passed.
 - `python -m roamerd --config config/roamerd.yaml --dry-run` -> dry-run ok, dev driver plan printed.
 - `python -m roamerd --config config/roamerd-pi.yaml --dry-run` -> dry-run ok, `motion=ros2_nav`.
-- `pytest tests/roamerd/ -q --tb=short` -> 208 passed.
-- `pytest -q -m 'not hardware' --tb=short` -> 504 passed, 8 deselected.
+- `pytest tests/roamerd/ -q --tb=short` -> 212 passed.
+- `pytest -m "not hardware" -q --tb=short` -> 508 passed, 8 deselected.
 - `mypy src/roamerd/ --strict` -> success, 103 source files.
-- `ruff check src/roamerd/ tests/roamerd/` -> all checks passed.
+- `ruff format --check src/roamerd tests/roamerd src/roamer/cli/main.py` -> 175 files already formatted.
+- `ruff check src/roamerd tests/roamerd src/roamer/cli/main.py` -> all checks passed.
+- `bash -n scripts/*.sh` -> no syntax errors.
 - `python -m roamerd --config config/roamerd.yaml`, SIGTERM after startup -> stdout `roamerd started`, stderr empty, exit 0.
 - `python -m roamerd --config <temp control config> ping` against enabled ControlBridge socket -> `pong: true`.
 - PR review fixes verified: ControlBridge wait modes are `accepted`/`completed` with default `accepted`; completed wait returns terminal result or timeout/detach; ActionManager publishes real app session IDs; ActionStatus/PreemptionScope use contracts as the single source of truth; MotionModule no longer imports or type-checks mock drivers; CognitionBridge propagates correlation_id and serializes in-flight requests.

@@ -82,10 +82,7 @@ async def test_supervisor_health_loop_degrades_failed_module_without_crashing() 
 
     assert module.started is True
     assert module.stopped is True
-    assert any(
-        event.payload == {"component": "flaky", "status": "degraded"}
-        for event in events
-    )
+    assert any(event.payload == {"component": "flaky", "status": "degraded"} for event in events)
 
 
 def test_create_app_composes_kernel() -> None:

@@ -93,6 +93,9 @@ def legacy_request(argv: list[str], *, request_id: str = "legacy") -> RequestEnv
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if args in (["--help"], ["-h"], []):
+        print(_help_text())
+        return 0
     config_path = _extract_config_path(args)
     if args[:1] == ["serve"] and len(args) == 1:
         from roamerd.__main__ import main as roamerd_main
@@ -102,9 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         request = legacy_request(args)
         config = load_config(config_path)
-        response = asyncio.run(
-            ControlClient(Path(config.bridges.control.socket)).request(request)
-        )
+        response = asyncio.run(ControlClient(Path(config.bridges.control.socket)).request(request))
     except LegacyCliError as exc:
         print(f"roamer: {exc}", file=sys.stderr)
         return 2
@@ -197,6 +198,28 @@ def _extract_config_path(argv: list[str]) -> Path | None:
         del argv[index : index + 2]
         return value
     return None
+
+
+def _help_text() -> str:
+    return """Usage: roamer [--config PATH] COMMAND [ARGS]...
+
+Compatibility shim routed through roamerd ControlBridge.
+
+Commands:
+  ping
+  status
+  sense
+  speak TEXT
+  listen
+  watch
+  remind --after DELAY TEXT
+  home
+  goto X Y [ANGLE]
+  motion status|position|home|goto
+  serve ping|status
+  converse
+  wake
+"""
 
 
 if __name__ == "__main__":

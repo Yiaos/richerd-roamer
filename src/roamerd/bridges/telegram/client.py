@@ -47,6 +47,4 @@ class TelegramBridge:
         reason = str(event.payload.get("reason", "unknown"))
         text = str(event.payload.get("text", ""))
         transcript = text if self._log_transcripts else "[redacted]"
-        await self._client.send_message(
-            f"cognition unavailable: {reason} text={transcript}"
-        )
+        await self._client.send_message(f"cognition unavailable: {reason} text={transcript}")

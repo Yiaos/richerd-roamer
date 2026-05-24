@@ -313,6 +313,29 @@ async def test_mark_detached_keeps_resource_occupied_and_queryable() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mark_detached_full_lifecycle_preempt_releases_resource() -> None:
+    bus = EventBus()
+    manager = ActionManager()
+    await manager.start(bus)
+    action = await manager.request_action("motion.goto", {}, resource="motion")
+    assert not isinstance(action, ActionRequestError)
+
+    await manager.mark_detached(action.action_id)
+    blocked = await manager.request_action("motion.goto", {}, resource="motion")
+    preempted = await manager.preempt(
+        PreemptionScope(target_resources=["motion"], reason="test", source_event="test")
+    )
+    await manager.mark_preempted(action.action_id, "test")
+    next_action = await manager.request_action("motion.goto", {}, resource="motion")
+
+    assert isinstance(blocked, ActionRequestError)
+    assert preempted == [action.action_id]
+    assert manager.get_action(action.action_id).status is ActionStatus.PREEMPTED
+    assert not isinstance(next_action, ActionRequestError)
+    assert manager.get_running_actions("motion")[0].action_id == next_action.action_id
+
+
+@pytest.mark.asyncio
 async def test_module_unavailable_fails_running_actions_for_source_module() -> None:
     bus = EventBus()
     manager = ActionManager()

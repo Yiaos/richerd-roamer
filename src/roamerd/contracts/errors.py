@@ -39,13 +39,9 @@ class ErrorCode(StrEnum):
     DEPENDENCY_AUDIO_FFMPEG_MISSING = "dependency.audio.ffmpeg_missing"
     DEPENDENCY_TTS_EDGE_TTS_MISSING = "dependency.tts.edge_tts_missing"
     DEPENDENCY_TTS_PIPER_BINARY_MISSING = "dependency.tts.piper_binary_missing"
-    DEPENDENCY_TTS_PIPER_BINARY_NOT_EXECUTABLE = (
-        "dependency.tts.piper_binary_not_executable"
-    )
+    DEPENDENCY_TTS_PIPER_BINARY_NOT_EXECUTABLE = "dependency.tts.piper_binary_not_executable"
     DEPENDENCY_TTS_PIPER_MODEL_MISSING = "dependency.tts.piper_model_missing"
-    DEPENDENCY_BLUETOOTH_BLUETOOTHCTL_MISSING = (
-        "dependency.bluetooth.bluetoothctl_missing"
-    )
+    DEPENDENCY_BLUETOOTH_BLUETOOTHCTL_MISSING = "dependency.bluetooth.bluetoothctl_missing"
     MOTION_STATUS_UNSUPPORTED = "motion.status.unsupported"
     MOTION_POSITION_UNAVAILABLE = "motion.position.unavailable"
     MOTION_POINT_UNKNOWN = "motion.point.unknown"

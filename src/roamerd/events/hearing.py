@@ -54,9 +54,7 @@ class ListenFailed(BaseModel):
 
 class AudioLevelChanged(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    EVENT_TYPE: ClassVar[Literal["hearing.audio_level_changed"]] = (
-        "hearing.audio_level_changed"
-    )
+    EVENT_TYPE: ClassVar[Literal["hearing.audio_level_changed"]] = "hearing.audio_level_changed"
 
     rms: float
     peak: float

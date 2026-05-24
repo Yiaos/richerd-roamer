@@ -28,10 +28,7 @@ class Su03tGpioWakewordDriver:
         while True:
             await self._wait_edge()
             now = self._clock()
-            if (
-                self._last_wake_at is not None
-                and now - self._last_wake_at < self._min_interval_sec
-            ):
+            if self._last_wake_at is not None and now - self._last_wake_at < self._min_interval_sec:
                 continue
             self._last_wake_at = now
             return WakeEvent(wakeword=self._wakeword, confidence=1.0)

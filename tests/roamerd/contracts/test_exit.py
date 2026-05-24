@@ -15,4 +15,3 @@ def test_exit_category_for_error_canonicalizes_legacy_codes() -> None:
     assert exit_category_for_error(ErrorCode.CONFIG_INVALID) is ExitCategory.USAGE
     assert exit_category_for_error("dependency.audio.aplay_missing") is ExitCategory.DEPENDENCY
     assert exit_category_for_error("unknown.new_error") is ExitCategory.RUNTIME
-

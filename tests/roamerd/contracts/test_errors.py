@@ -8,4 +8,3 @@ def test_error_codes_cover_legacy_command_contract() -> None:
     assert ErrorCode.CONFIG_INVALID == "config.invalid"
     assert LEGACY_ERROR_MAP["driver_not_found"] == ErrorCode.DRIVER_NOT_FOUND
     assert LEGACY_ERROR_MAP["serve_timeout"] == ErrorCode.SERVE_TIMEOUT
-

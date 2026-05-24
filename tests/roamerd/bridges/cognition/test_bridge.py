@@ -109,3 +109,37 @@ async def test_cognition_bridge_serializes_in_flight_requests() -> None:
 
     assert client.max_active_requests == 1
     assert [request["correlation_id"] for request in client.requests] == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_cognition_bridge_circuit_opens_after_three_failures() -> None:
+    bus = EventBus()
+    client = MockCognitionClient(RuntimeError("down"))
+    bridge = CognitionBridge(client=client, session_id="s")
+    events: list[Event] = []
+
+    async def handler(event: Event) -> None:
+        events.append(event)
+
+    bus.subscribe("cognition.unavailable", handler)
+    await bridge.start(bus)
+
+    for index in range(4):
+        await bus.publish(
+            Event(
+                event_type="cognition.request_needed",
+                source="test",
+                session_id="s",
+                correlation_id=f"req-{index}",
+                payload={"text": "hello"},
+            )
+        )
+        await bus.run_until_idle()
+
+    assert len(client.requests) == 3
+    assert [event.payload["reason"] for event in events] == [
+        "down",
+        "down",
+        "down",
+        "circuit_open",
+    ]

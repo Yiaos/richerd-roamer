@@ -88,3 +88,15 @@ def test_old_roamer_cli_module_routes_like_roamerd_module() -> None:
 
     assert result.returncode == 69
     assert "control bridge unavailable" in result.stderr
+
+
+def test_old_roamer_cli_module_help_exits_zero() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "roamer.cli.main", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Usage:" in result.stdout
