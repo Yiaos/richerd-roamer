@@ -1,0 +1,9 @@
+string physical_state
+float64 x
+float64 y
+float64 angle
+float64 state_age_ms
+string map_id
+string map_hash
+bool docked
+uint8 battery_percent

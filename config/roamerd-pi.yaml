@@ -1,0 +1,32 @@
+runtime:
+  state_dir: /run/roamer
+capabilities:
+  hearing:
+    audio:
+      driver: mock
+    vad:
+      driver: mock
+    stt:
+      mode: mock
+      provider: mock
+      batch_driver: mock
+    wakeword:
+      driver: mock
+  speech:
+    playback:
+      driver: mock
+    tts:
+      primary: mock
+    bluetooth:
+      driver: mock
+  vision:
+    camera:
+      driver: mock
+  motion:
+    driver: ros2_nav
+bridges:
+  control:
+    enabled: true
+    socket: /run/roamer/roamer.sock
+  cognition:
+    driver: mock

@@ -1,0 +1,7 @@
+---
+bool docked
+string physical_state
+string error_code
+string error_message
+---
+string physical_state

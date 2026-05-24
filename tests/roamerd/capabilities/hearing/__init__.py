@@ -1,0 +1,1 @@
+"""Hearing capability tests."""
