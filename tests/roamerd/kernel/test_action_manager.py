@@ -16,7 +16,7 @@ from roamerd.kernel.event_bus import EventBus
 @pytest.mark.asyncio
 async def test_request_action_starts_action_and_publishes_event() -> None:
     bus = EventBus()
-    manager = ActionManager()
+    manager = ActionManager(session_id="session-real")
     events: list[Event] = []
 
     async def handler(event: Event) -> None:
@@ -39,6 +39,7 @@ async def test_request_action_starts_action_and_publishes_event() -> None:
     assert action.payload == {"text": "hello"}
     assert events[0].payload["action_id"] == action.action_id
     assert events[0].payload["action_type"] == "speech.speak"
+    assert events[0].session_id == "session-real"
 
 
 @pytest.mark.asyncio

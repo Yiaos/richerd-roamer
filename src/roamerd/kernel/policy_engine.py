@@ -23,6 +23,9 @@ class PolicyModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+# Policy admission adds routing-only context before converting to the shared
+# ActionManager contract, so it intentionally stays separate from
+# roamerd.contracts.action.ActionRequest.
 class ActionRequest(PolicyModel):
     action_type: str
     payload: JSONDict = Field(default_factory=dict)

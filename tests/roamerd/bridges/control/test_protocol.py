@@ -29,8 +29,15 @@ def test_node_protocol_v1_roundtrip() -> None:
     encoded = encode_response(response)
 
     assert decoded == request
+    assert decoded.wait == "accepted"
     assert encoded.endswith(b"\n")
     assert ResponseEnvelope.model_validate_json(encoded).result == {"pong": True}
+
+
+def test_node_protocol_wait_completed_contract() -> None:
+    request = RequestEnvelope(request_id="req-2", op="run", wait="completed")
+
+    assert request.wait == "completed"
 
 
 def test_protocol_rejects_malformed_and_oversized_messages() -> None:

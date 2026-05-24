@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Protocol
 
 from roamerd.events import Event
@@ -30,6 +31,9 @@ class CognitionBridge:
         self._client = client
         self._session_id = session_id
         self._bus: EventBus | None = None
+        self._request_lock = asyncio.Lock()
+        self._consecutive_failures = 0
+        self._circuit_open = False
 
     async def start(self, bus: EventBus) -> None:
         self._bus = bus
@@ -47,12 +51,31 @@ class CognitionBridge:
             "text": text if isinstance(text, str) else "",
             "turn_id": event.turn_id,
             "session_id": event.session_id,
+            "correlation_id": event.correlation_id,
         }
+        if self._circuit_open:
+            await self._publish(
+                "cognition.unavailable",
+                {"reason": "circuit_open", "correlation_id": event.correlation_id},
+                event,
+            )
+            return
         try:
-            response = await self._client.request(payload)
+            async with self._request_lock:
+                response = await self._client.request(payload)
+            self._consecutive_failures = 0
+            response = {**response, "correlation_id": event.correlation_id}
             await self._publish("cognition.response_received", response, event)
         except Exception as exc:
-            await self._publish("cognition.unavailable", {"reason": str(exc)}, event)
+            self._consecutive_failures += 1
+            # TODO(phase-c): replace this placeholder with a timed half-open circuit breaker
+            # and health event once the real cognition transport adapter is wired in.
+            self._circuit_open = self._consecutive_failures >= 3
+            await self._publish(
+                "cognition.unavailable",
+                {"reason": str(exc), "correlation_id": event.correlation_id},
+                event,
+            )
 
     async def _publish(self, event_type: str, payload: JSONDict, source: Event) -> None:
         if self._bus is None:

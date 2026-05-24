@@ -104,7 +104,7 @@ def create_app(config: RoamerdConfig) -> RoamerdApp:
         session_id=session_id,
         playback_stale_after_sec=config.runtime.playback_stale_after_sec,
     )
-    actions = ActionManager()
+    actions = ActionManager(session_id=session_id)
     world = WorldModel(static_places=config.world_model.places)
     policy = PolicyEngine(
         session_id=session_id,

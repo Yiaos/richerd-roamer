@@ -2,37 +2,27 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from enum import StrEnum
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from roamerd.contracts.action import ActionStatus, PreemptionScope
 from roamerd.contracts.errors import ErrorCode
 from roamerd.events import Event, Priority
 from roamerd.kernel.event_bus import EventBus
 from roamerd.types import JSONDict
 
+__all__ = [
+    "Action",
+    "ActionManager",
+    "ActionRequestError",
+    "ActionStatus",
+    "PreemptionScope",
+]
+
 
 class ActionModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
-
-class ActionStatus(StrEnum):
-    PENDING = "pending"
-    WAITING_RESOURCE = "waiting_resource"
-    RUNNING = "running"
-    RUNNING_DETACHED = "running_detached"
-    PREEMPTING = "preempting"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-    PREEMPTED = "preempted"
-
-
-class PreemptionScope(ActionModel):
-    target_resources: list[str]
-    reason: str
-    source_event: str
 
 
 class Action(ActionModel):
@@ -62,8 +52,14 @@ class ActionRequestError(ActionModel):
 
 
 class ActionManager:
-    def __init__(self, *, preemption_timeout_sec: float = 5.0) -> None:
+    def __init__(
+        self,
+        *,
+        session_id: str = "session-1",
+        preemption_timeout_sec: float = 5.0,
+    ) -> None:
         self._bus: EventBus | None = None
+        self._session_id = session_id
         self._actions: dict[str, Action] = {}
         self._resource_locks: dict[str, str] = {}
         self._preemption_timeout_sec = preemption_timeout_sec
@@ -412,7 +408,7 @@ class ActionManager:
             Event(
                 event_type=event_type,
                 source="action_manager",
-                session_id="session-1",
+                session_id=self._session_id,
                 action_id=action.action_id,
                 turn_id=action.turn_id,
                 priority=action.priority,

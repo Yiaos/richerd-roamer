@@ -22,6 +22,8 @@ class MotionStatus(BaseModel):
 
 
 class MotionDriver(Protocol):
+    completes_synchronously: bool
+
     async def goto(self, x: float, y: float, angle: float | None = None) -> MotionResult: ...
 
     async def home(self) -> MotionResult: ...

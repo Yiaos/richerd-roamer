@@ -9,5 +9,5 @@
   "op": "ping",
   "timeout_ms": 30000,
   "args": {},
-  "wait": "result"
+  "wait": "accepted"
 }

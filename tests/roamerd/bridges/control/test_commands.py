@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from roamerd.bridges.control.commands import ControlCommandRouter
@@ -51,6 +53,81 @@ async def test_control_router_ping_status_and_run_action() -> None:
         RequestEnvelope(request_id="4", op="session.start", args={"kind": "voice_turn"})
     )
     assert session.result["kind"] == "voice_turn"
+
+
+@pytest.mark.asyncio
+async def test_control_router_completed_wait_returns_terminal_action_result() -> None:
+    bus = EventBus()
+    actions = ActionManager()
+    state = StateManager(session_id="session-1")
+    world = WorldModel()
+    policy = PolicyEngine(session_id="session-1")
+    await actions.start(bus)
+    await state.start(bus)
+    await policy.start(bus, actions, state, world)
+    router = ControlCommandRouter(
+        event_bus=bus,
+        action_manager=actions,
+        policy_engine=policy,
+        state_manager=state,
+    )
+
+    async def complete_action(event: Event) -> None:
+        action_id = str(event.payload["action_id"])
+        await actions.complete_action(action_id, {"value": 123})
+
+    bus.subscribe("action.started", complete_action)
+
+    bus_task = asyncio.create_task(bus.run())
+    try:
+        response = await router.dispatch(
+            RequestEnvelope(
+                request_id="completed-1",
+                op="run",
+                wait="completed",
+                timeout_ms=1000,
+                args={"action": "time.now", "resource": "none", "payload": {}},
+            )
+        )
+    finally:
+        await bus.stop()
+        await bus_task
+
+    assert response.status == "ok"
+    assert response.result == {"value": 123}
+
+
+@pytest.mark.asyncio
+async def test_control_router_completed_wait_times_out_and_detaches_action() -> None:
+    bus = EventBus()
+    actions = ActionManager()
+    state = StateManager(session_id="session-1")
+    world = WorldModel()
+    policy = PolicyEngine(session_id="session-1")
+    await actions.start(bus)
+    await state.start(bus)
+    await policy.start(bus, actions, state, world)
+    router = ControlCommandRouter(
+        event_bus=bus,
+        action_manager=actions,
+        policy_engine=policy,
+        state_manager=state,
+    )
+
+    response = await router.dispatch(
+        RequestEnvelope(
+            request_id="completed-timeout",
+            op="run",
+            wait="completed",
+            timeout_ms=1,
+            args={"action": "time.now", "resource": "none", "payload": {}},
+        )
+    )
+
+    assert response.status == "error"
+    assert response.error == {"code": "TIMEOUT", "message": "action completion timed out"}
+    assert response.action_id is not None
+    assert actions.get_action(response.action_id).status == "running_detached"
 
 
 @pytest.mark.asyncio

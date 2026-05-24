@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Protocol
 
 from roamerd.bridges.control.protocol import RequestEnvelope, ResponseEnvelope
 from roamerd.bridges.control.session import SessionCoordinator
+from roamerd.contracts.action import ActionStatus
+from roamerd.events import Event
 from roamerd.kernel import ActionManager, ActionRequest, PolicyEngine, StateManager
 from roamerd.kernel.event_bus import EventBus
 from roamerd.types import JSONDict
@@ -87,13 +90,72 @@ class ControlCommandRouter:
                 op=request.op,
                 error={"code": "REJECTED", "message": decision.reason},
             )
+        if decision.action_id is None or request.wait == "accepted":
+            return ResponseEnvelope(
+                request_id=request.request_id,
+                trace_id=request.trace_id,
+                status="ok",
+                op=request.op,
+                action_id=decision.action_id,
+                result={"accepted": True},
+            )
+        return await self._wait_for_completed_action(request, decision.action_id)
+
+    async def _wait_for_completed_action(
+        self,
+        request: RequestEnvelope,
+        action_id: str,
+    ) -> ResponseEnvelope:
+        future: asyncio.Future[Event] = asyncio.get_running_loop().create_future()
+
+        async def handler(event: Event) -> None:
+            if event.action_id != action_id and event.payload.get("action_id") != action_id:
+                return
+            if not future.done():
+                future.set_result(event)
+
+        subscriptions = [
+            self._bus.subscribe("action.completed", handler),
+            self._bus.subscribe("action.failed", handler),
+            self._bus.subscribe("action.cancelled", handler),
+            self._bus.subscribe("action.preempted", handler),
+        ]
+        try:
+            event = await asyncio.wait_for(future, timeout=request.timeout_ms / 1000)
+        except TimeoutError:
+            action = self._actions.get_action(action_id)
+            if action is not None and action.status in {
+                ActionStatus.RUNNING,
+                ActionStatus.PREEMPTING,
+                ActionStatus.WAITING_RESOURCE,
+            }:
+                await self._actions.mark_detached(action_id, "control_bridge_wait_timeout")
+            return ResponseEnvelope(
+                request_id=request.request_id,
+                trace_id=request.trace_id,
+                status="error",
+                op=request.op,
+                action_id=action_id,
+                error={"code": "TIMEOUT", "message": "action completion timed out"},
+            )
+        finally:
+            for subscription in subscriptions:
+                self._bus.unsubscribe(subscription.id)
+
+        action = self._actions.get_action(action_id)
+        if event.event_type == "action.completed":
+            result = action.result if action is not None and action.result is not None else {}
+            return self._ok(request, result, action_id=action_id)
         return ResponseEnvelope(
             request_id=request.request_id,
             trace_id=request.trace_id,
-            status="ok",
+            status="error",
             op=request.op,
-            action_id=decision.action_id,
-            result={"accepted": True},
+            action_id=action_id,
+            error={
+                "code": str(event.payload.get("error", event.event_type)).upper(),
+                "message": event.event_type,
+            },
         )
 
     def _action_status(self, request: RequestEnvelope) -> ResponseEnvelope:

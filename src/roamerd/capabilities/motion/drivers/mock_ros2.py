@@ -6,6 +6,7 @@ from roamerd.capabilities.motion.drivers.ros2_nav_base import MotionResult, Moti
 class MockRos2NavDriver:
     def __init__(self, *, complete_immediately: bool = True) -> None:
         self.complete_immediately = complete_immediately
+        self.completes_synchronously = complete_immediately
         self.homed = False
         self.stopped = False
         self.target: tuple[float, float, float | None] | None = None

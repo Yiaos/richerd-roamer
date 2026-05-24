@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from roamerd.capabilities.motion.drivers.mock_ros2 import MockRos2NavDriver
 from roamerd.capabilities.motion.drivers.ros2_nav_base import MotionDriver, MotionResult
 from roamerd.events import Event, Priority
 from roamerd.kernel import ActionManager, EventBus
@@ -147,7 +146,7 @@ class MotionModule:
 
 
 def _completes_immediately(driver: MotionDriver) -> bool:
-    return not isinstance(driver, MockRos2NavDriver) or driver.complete_immediately
+    return driver.completes_synchronously
 
 
 def _float_value(value: object) -> float:

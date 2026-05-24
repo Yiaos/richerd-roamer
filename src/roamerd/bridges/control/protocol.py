@@ -24,7 +24,7 @@ class RequestEnvelope(BaseModel):
     op: str
     timeout_ms: int = 30_000
     args: JSONDict = Field(default_factory=dict)
-    wait: Literal["accepted", "result"] = "result"
+    wait: Literal["accepted", "completed"] = "accepted"
 
 
 class ResponseEnvelope(BaseModel):

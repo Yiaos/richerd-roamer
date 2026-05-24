@@ -28,6 +28,8 @@ class FakeRos2MotionClient:
 
 
 class Ros2NavDriver:
+    completes_synchronously = False
+
     def __init__(self, *, client: FakeRos2MotionClient, max_state_age_sec: float = 10.0) -> None:
         self._client = client
         self._max_state_age_sec = max_state_age_sec

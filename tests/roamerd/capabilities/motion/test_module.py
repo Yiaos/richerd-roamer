@@ -12,6 +12,15 @@ def test_motion_protocol_accepts_mock_driver() -> None:
     driver: MotionDriver = MockRos2NavDriver()
 
     assert driver is not None
+    assert driver.completes_synchronously is True
+
+
+def test_motion_module_does_not_import_mock_driver_type() -> None:
+    import inspect
+
+    source = inspect.getsource(MotionModule)
+
+    assert "MockRos2NavDriver" not in source
 
 
 @pytest.mark.asyncio
