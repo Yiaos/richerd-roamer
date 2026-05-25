@@ -1,73 +1,172 @@
-# Roamer Command Reference
+# Roamerd Command Reference
 
-## Current status
+## Runtime
 
-- `watch`, `speak`, `sense` are usable.
-- `listen` exists but still needs real-world tuning for USB/audio-device enumeration and VAD threshold stability.
-- `init` owns startup initialization such as Bluetooth speaker connection.
-- `motion` is Valetudo-backed base mobility for the Roborock S5: `status`, `position`, `locate`, `home`, `goto`.
-- Current `master` only documents raw-coordinate `goto`; executable named-point navigation may exist on an active branch/runtime, but should not be assumed unless that branch/runtime explicitly supports it.
+`roamerd` is a long-running async event-driven daemon. It does not expose individual CLI commands like the legacy `roamer` CLI. Instead, external callers interact through the ControlBridge Unix socket or the legacy compat shim.
 
-## Output contract
-
-Default output is JSON.
-
-- Success: inspect `ok: true` plus command-specific fields.
-- Failure: inspect `ok: false`, `error_code`, and `message`.
-- Exception: `roamer listen --text-only` emits plain text for shell pipelines.
-
-## Core commands
+## Entry Point
 
 ```bash
-roamer watch --output /tmp/roamer.jpg
-roamer speak "你好，Richer" --style cheerful
-roamer listen --timeout 10 --debug
-roamer listen --timeout 10 --text-only | roamer speak --stdin --prefix "我听到的是："
-roamer sense --full
-roamer init
+python -m roamerd --config config/roamerd.yaml
 ```
 
-## Motion commands
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--config` | `config/roamerd.yaml` | Path to YAML config |
+| `--dry-run` | — | Validate config, print driver assignments, exit |
+| `--log-level` | `info` | Log level |
+| `--version` | — | Print version and exit |
+
+### Dry-run output
+
+```
+dry-run ok
+hearing=alsa
+speech=alsa
+vision=fswebcam
+motion=ros2_nav
+```
+
+## ControlBridge Operations
+
+The primary programmatic interface. Unix socket, JSON request/response envelopes.
+
+### ping
+
+Health check.
+
+```json
+→ {"op": "ping"}
+← {"status": "ok", "result": {"pong": true}}
+```
+
+### status
+
+Full runtime state snapshot (StateManager model dump).
+
+```json
+→ {"op": "status"}
+← {"status": "ok", "result": {"state": "...", "playback_active": false, ...}}
+```
+
+### run
+
+Request an action. Policy-gated: the PolicyEngine evaluates admission before dispatching.
+
+```json
+→ {"op": "run", "args": {"action": "speak", "payload": {"text": "你好"}}}
+← {"status": "ok", "result": {"action_id": "...", "status": "accepted"}}
+```
+
+Wait modes:
+- `wait: "accepted"` (default) — returns after policy admission
+- `wait: "completed"` — waits for action terminal event or timeout
+
+### session.start
+
+Start a voice turn session (used by wake/converse flow).
+
+```json
+→ {"op": "session.start", "args": {"kind": "voice_turn"}}
+← {"status": "ok", "result": {"session_id": "...", "kind": "voice_turn"}}
+```
+
+### action.status
+
+Check status of a specific action by ID.
+
+```json
+→ {"op": "action.status", "args": {"action_id": "abc123"}}
+← {"status": "ok", "result": {"action_id": "abc123", "status": "running", ...}}
+```
+
+### action.cancel
+
+Cancel a running action.
+
+```json
+→ {"op": "action.cancel", "args": {"action_id": "abc123"}}
+← {"status": "ok", "result": {"cancelled": true}}
+```
+
+### actions.list
+
+List all tracked actions (running + recent terminal).
+
+```json
+→ {"op": "actions.list"}
+← {"status": "ok", "result": {"actions": [...]}}
+```
+
+### Error response
+
+```json
+← {"status": "error", "error": {"code": "UNKNOWN_OP", "message": "..."}}
+```
+
+## Legacy CLI Compatibility
+
+Old `roamer` commands still work when passed as trailing args:
 
 ```bash
-roamer motion status
-roamer motion position
-roamer motion locate
-roamer motion home --wait
-roamer motion goto --x 25500 --y 25300 --wait
-roamer motion goto --x 25500 --y 25300 --angle 90 --wait
+python -m roamerd --config config/roamerd-pi.yaml watch --output /tmp/roamer.jpg
+python -m roamerd --config config/roamerd-pi.yaml speak "你好" --style cheerful
+python -m roamerd --config config/roamerd-pi.yaml listen --timeout 10 --text-only
+python -m roamerd --config config/roamerd-pi.yaml sense --full
+python -m roamerd --config config/roamerd-pi.yaml motion status
+python -m roamerd --config config/roamerd-pi.yaml motion home --wait
 ```
 
-Named-point note:
+The `roamer` console script entry point also routes through `roamerd.compat.legacy_cli`.
 
-- On current `master`, a "named place" still means manually reading `docs/valetudo-locations.md` and copying the verified coordinates into `roamer motion goto --x ... --y ...`.
-- If an active branch/runtime explicitly supports executable named points, treat `motion.named_points` as the **execution source of truth** and `docs/valetudo-locations.md` as **grounding / verification evidence**.
-- Config presence alone does not prove a semantic place is trustworthy; config/docs disagreement should be treated as embodiment risk, not ordinary docs drift.
+These are compatibility shims. New integrations should use the ControlBridge socket.
 
-Current Valetudo facts:
+## Event Types (internal)
 
-- Use `GET /api/v2/robot/state` for status/coordinates.
-- `PUT /api/v2/robot/capabilities/BasicControlCapability {"action":"home"}` triggers docking.
-- `/api/v2/map` returns 404 on the current S5, so do not rely on it.
+Key events flowing through the EventBus:
 
-## Utility commands
+| Event | Source | Description |
+|-------|--------|-------------|
+| `system.module_ready` | app/modules | Module startup complete |
+| `system.health_changed` | bridges/kernel | Component health state change |
+| `system.watchdog_triggered` | supervisor | Stalled module detected |
+| `hearing.wake_triggered` | HearingModule | Wake phrase detected |
+| `hearing.transcript_ready` | HearingModule | STT result available |
+| `speech.playback_started` | SpeechModule | TTS playback began |
+| `speech.playback_finished` | SpeechModule | TTS playback ended |
+| `vision.image_captured` | VisionModule | Camera frame captured |
+| `motion.started` | MotionModule | Navigation began |
+| `motion.completed` | MotionModule | Navigation finished |
+| `motion.failed` | MotionModule | Navigation error |
+| `cognition.request_needed` | PolicyEngine | LLM reasoning requested |
+| `cognition.response_received` | CognitionBridge | LLM response arrived |
+| `cognition.unavailable` | CognitionBridge | Circuit breaker open |
+| `memory.candidate_raised` | various | Memory write candidate |
+| `memory.flush_failed` | MemoryBridge | Flush to sink failed |
+| `action.requested` | ActionManager | New action created |
+| `action.completed` | ActionManager | Action finished successfully |
+| `action.failed` | ActionManager | Action errored |
+
+## Config Reference
+
+Two standard configs:
+- `config/roamerd.yaml` — development (mock drivers, local testing)
+- `config/roamerd-pi.yaml` — production Pi (real hardware drivers)
+
+See README.md for the full config structure.
+
+## Testing
 
 ```bash
-roamer audio record --duration 5 --output /tmp/rec.wav
-roamer audio play /tmp/rec.wav
-roamer bt status
-roamer bt connect B8:5C:EE:89:00:BE
+# Roamerd tests only
+.venv/bin/python -m pytest tests/roamerd/ -q --tb=short
+
+# All non-hardware
+.venv/bin/python -m pytest -q -m 'not hardware' --tb=short
+
+# Lint + type check
+.venv/bin/ruff check src/roamerd/ tests/roamerd/
+.venv/bin/mypy src/roamerd/ --strict
 ```
-
-## Config notes
-
-- Default config path is repo-local `config.yaml`.
-- Use `-c/--config` for explicit overrides.
-- If repo `config.yaml` is absent and no config is provided, Roamer falls back to internal defaults.
-- Current example drivers: camera `fswebcam`, audio `alsa`, TTS `edge`, ASR `funasr`, VAD `silero`, motion `valetudo`, Bluetooth `bluez`.
-
-## Known caveats
-
-- PulseAudio is not the current blocker; do not describe it as such.
-- Bluetooth speaker is paired but can be unstable; `speak` has lazy reconnect, `roamer init` handles boot connect, and `bt connect` is manual fallback.
-- Full pytest includes hardware/model-dependent failures; use non-hardware tests for normal regression checks.
