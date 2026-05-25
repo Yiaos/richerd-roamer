@@ -159,3 +159,54 @@ def test_action_helpers_record_duration(tmp_path: Path) -> None:
     entries = read_jsonl(tmp_path)
     assert [entry["event_type"] for entry in entries] == ["action.started", "action.completed"]
     assert "duration_ms" in entries[1]["payload"]
+
+
+@pytest.mark.asyncio
+async def test_seen_event_ids_are_bounded(tmp_path: Path) -> None:
+    bus = EventBus()
+    logger = TraceLogger(
+        TraceLoggerConfig(log_dir=tmp_path, seen_event_id_limit=3),
+        session_id="session-1",
+    )
+    await logger.start(bus)
+
+    for index in range(5):
+        await bus.publish(
+            Event(
+                event_type="system.health_changed",
+                source="test",
+                session_id="session-1",
+                event_id=f"event-{index}",
+                payload={"component": "hearing", "status": "healthy"},
+            )
+        )
+    await bus.run_until_idle()
+
+    assert len(logger._seen_event_ids) == 3
+    assert list(logger._seen_event_ids_order) == ["event-2", "event-3", "event-4"]
+    logger.close()
+
+
+def test_action_end_removes_started_timestamp(tmp_path: Path) -> None:
+    logger = TraceLogger(TraceLoggerConfig(log_dir=tmp_path), session_id="session-1")
+
+    logger.log_action_start("action-1", action_type="speech.speak", resource="speaker")
+    assert "action-1" in logger._action_started_at
+    logger.log_action_end("action-1", {"ok": True})
+
+    assert "action-1" not in logger._action_started_at
+    logger.close()
+
+
+def test_stale_action_start_times_are_cleaned(tmp_path: Path) -> None:
+    logger = TraceLogger(
+        TraceLoggerConfig(log_dir=tmp_path, stale_action_after_sec=0),
+        session_id="session-1",
+    )
+
+    logger.log_action_start("stale-action", action_type="motion.goto", resource="motion")
+    logger.log_action_start("fresh-action", action_type="speech.speak", resource="speaker")
+
+    assert "stale-action" not in logger._action_started_at
+    assert "fresh-action" in logger._action_started_at
+    logger.close()

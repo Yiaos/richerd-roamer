@@ -162,6 +162,8 @@ class StateManager:
             self._state.bridges[component] = status
         else:
             self._state.modules[component] = status
+        if component == "cognition":
+            self._state.cognition_available = status is HealthState.HEALTHY
 
     def _derive_mode(self) -> str:
         if any(health is HealthState.UNAVAILABLE for health in self._state.modules.values()):

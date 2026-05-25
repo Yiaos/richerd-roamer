@@ -4,6 +4,7 @@ import contextlib
 import contextvars
 import json
 import time
+from collections import deque
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,6 +32,8 @@ class TraceLoggerConfig(BaseModel):
     retention_days: int = 3
     log_transcripts: bool = True
     log_audio_paths: bool = False
+    seen_event_id_limit: int = 10_000
+    stale_action_after_sec: float = 60 * 60
 
 
 class TraceEntry(BaseModel):
@@ -59,6 +62,7 @@ class TraceLogger:
         self._file = self._open_file()
         self._action_started_at: dict[str, datetime] = {}
         self._seen_event_ids: set[str] = set()
+        self._seen_event_ids_order: deque[str] = deque()
 
     async def start(self, bus: EventBus) -> None:
         bus.subscribe_pattern("*", self._handle_event)
@@ -118,6 +122,7 @@ class TraceLogger:
             self._file.flush()
 
     def log_action_start(self, action_id: str, *, action_type: str, resource: str) -> None:
+        self._cleanup_stale_action_starts()
         self._action_started_at[action_id] = datetime.now(UTC)
         self.log(
             "action.started",
@@ -127,7 +132,8 @@ class TraceLogger:
         )
 
     def log_action_end(self, action_id: str, result: JSONDict) -> None:
-        started = self._action_started_at.get(action_id)
+        self._cleanup_stale_action_starts()
+        started = self._action_started_at.pop(action_id, None)
         duration_ms = 0.0
         if started is not None:
             duration_ms = (datetime.now(UTC) - started).total_seconds() * 1000
@@ -154,7 +160,7 @@ class TraceLogger:
     async def _handle_event(self, event: Event) -> None:
         if event.event_id in self._seen_event_ids:
             return
-        self._seen_event_ids.add(event.event_id)
+        self._remember_event_id(event.event_id)
         self.log(
             event.event_type,
             event.payload,
@@ -193,6 +199,29 @@ class TraceLogger:
         for path in self._config.log_dir.glob("roamerd-*.jsonl*"):
             if path.is_file() and path.stat().st_mtime < cutoff:
                 path.unlink()
+
+    def _remember_event_id(self, event_id: str) -> None:
+        if self._config.seen_event_id_limit <= 0:
+            self._seen_event_ids.clear()
+            self._seen_event_ids_order.clear()
+            return
+        self._seen_event_ids.add(event_id)
+        self._seen_event_ids_order.append(event_id)
+        while len(self._seen_event_ids_order) > self._config.seen_event_id_limit:
+            expired = self._seen_event_ids_order.popleft()
+            self._seen_event_ids.discard(expired)
+
+    def _cleanup_stale_action_starts(self) -> None:
+        if self._config.stale_action_after_sec < 0:
+            return
+        now = datetime.now(UTC)
+        stale_action_ids = [
+            action_id
+            for action_id, started_at in self._action_started_at.items()
+            if (now - started_at).total_seconds() > self._config.stale_action_after_sec
+        ]
+        for action_id in stale_action_ids:
+            self._action_started_at.pop(action_id, None)
 
     def _redact(self, payload: JSONDict) -> tuple[JSONDict, bool]:
         redacted = False

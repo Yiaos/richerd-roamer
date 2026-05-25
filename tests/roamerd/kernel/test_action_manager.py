@@ -369,3 +369,111 @@ async def test_module_unavailable_fails_running_actions_for_source_module() -> N
     assert manager.get_action(action.action_id).error == {"reason": "module_crashed"}
     assert failed_events[0].payload["action_id"] == action.action_id
     assert not isinstance(next_action, ActionRequestError)
+
+
+@pytest.mark.asyncio
+async def test_terminal_actions_are_pruned_to_bounded_recent_history() -> None:
+    bus = EventBus()
+    manager = ActionManager(
+        terminal_retention_sec=0.01,
+        recent_terminal_maxlen=3,
+        orphan_timeout_sec=0,
+    )
+    await manager.start(bus)
+    action_ids: list[str] = []
+
+    for index in range(5):
+        action = await manager.request_action("time.now", {"index": index}, resource="none")
+        assert not isinstance(action, ActionRequestError)
+        action_ids.append(action.action_id)
+        await manager.complete_action(action.action_id, {"index": index})
+
+    await asyncio.sleep(0.03)
+    await manager.prune_terminal_actions()
+
+    assert len(manager._actions) == 0
+    assert manager.get_action(action_ids[0]) is None
+    assert manager.get_action(action_ids[1]) is None
+    assert [manager.get_action(action_id).action_id for action_id in action_ids[-3:]] == action_ids[
+        -3:
+    ]
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_terminal_cleanup_drops_stale_resource_lock() -> None:
+    bus = EventBus()
+    manager = ActionManager(terminal_retention_sec=0.01, orphan_timeout_sec=0)
+    await manager.start(bus)
+    action = await manager.request_action("motion.goto", {}, resource="motion")
+    assert not isinstance(action, ActionRequestError)
+    await manager.complete_action(action.action_id, {"ok": True})
+    manager._resource_locks["motion"] = action.action_id
+
+    await asyncio.sleep(0.03)
+    await manager.prune_terminal_actions()
+
+    assert manager._resource_locks == {}
+    assert manager.get_action(action.action_id).status is ActionStatus.COMPLETED
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_orphan_running_action_fails_after_timeout_without_module_activity() -> None:
+    bus = EventBus()
+    manager = ActionManager(
+        orphan_timeout_sec=0.01,
+        orphan_scan_interval_sec=0.005,
+        terminal_retention_sec=60,
+    )
+    failed_events: list[Event] = []
+
+    async def handler(event: Event) -> None:
+        failed_events.append(event)
+
+    bus.subscribe("action.failed", handler)
+    await manager.start(bus)
+    action = await manager.request_action("speech.speak", {}, resource="speaker")
+    assert not isinstance(action, ActionRequestError)
+
+    await asyncio.sleep(0.04)
+    await bus.run_until_idle()
+
+    assert manager.get_action(action.action_id).status is ActionStatus.FAILED
+    assert manager.get_action(action.action_id).error == {"reason": "orphan_timeout"}
+    assert manager.get_running_actions("speaker") == []
+    assert failed_events[0].payload == {
+        "action_id": action.action_id,
+        "error": {"reason": "orphan_timeout"},
+    }
+    await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_orphan_detection_keeps_action_with_module_activity_running() -> None:
+    bus = EventBus()
+    manager = ActionManager(
+        orphan_timeout_sec=0.01,
+        orphan_scan_interval_sec=0.005,
+        terminal_retention_sec=60,
+    )
+    await manager.start(bus)
+    action = await manager.request_action("motion.goto", {}, resource="motion")
+    assert not isinstance(action, ActionRequestError)
+    await bus.publish(
+        Event(
+            event_type="motion.started",
+            source="motion",
+            session_id="session-1",
+            action_id=action.action_id,
+            payload={"action_id": action.action_id},
+        )
+    )
+    await bus.run_until_idle()
+
+    await asyncio.sleep(0.04)
+    await bus.run_until_idle()
+
+    assert manager.get_action(action.action_id).status is ActionStatus.RUNNING
+    assert manager.get_running_actions("motion")[0].action_id == action.action_id
+    await manager.stop()

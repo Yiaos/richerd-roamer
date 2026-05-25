@@ -142,6 +142,17 @@ async def test_cognition_unavailable_updates_query_flag() -> None:
     assert state.cognition_available is False
     assert state.snapshot().cognition_available is False
 
+    await bus.publish(
+        make_event(
+            "system.health_changed",
+            {"component": "cognition", "status": "healthy", "kind": "bridge"},
+        )
+    )
+    await bus.run_until_idle()
+
+    assert state.cognition_available is True
+    assert state.snapshot().cognition_available is True
+
 
 @pytest.mark.asyncio
 async def test_unknown_event_does_not_crash() -> None:

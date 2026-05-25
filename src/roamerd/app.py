@@ -87,6 +87,7 @@ class RoamerdApp:
 
     async def stop(self) -> None:
         await self.supervisor.stop()
+        await self.action_manager.stop()
         await self.event_bus.stop()
         self.observability.close()
 

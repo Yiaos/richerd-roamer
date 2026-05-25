@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -35,6 +36,7 @@ class Action(ActionModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    last_activity_at: datetime | None = None
     waiting_for_action_id: str | None = None
     waiting_deadline: datetime | None = None
     turn_id: str | None = None
@@ -57,18 +59,47 @@ class ActionManager:
         *,
         session_id: str = "session-1",
         preemption_timeout_sec: float = 5.0,
+        terminal_retention_sec: float = 300.0,
+        recent_terminal_maxlen: int = 200,
+        terminal_cleanup_interval_sec: float = 10.0,
+        orphan_timeout_sec: float = 60.0,
+        orphan_scan_interval_sec: float = 10.0,
     ) -> None:
         self._bus: EventBus | None = None
         self._session_id = session_id
         self._actions: dict[str, Action] = {}
+        self._recent_terminal: deque[Action] = deque(maxlen=recent_terminal_maxlen)
         self._resource_locks: dict[str, str] = {}
         self._preemption_timeout_sec = preemption_timeout_sec
+        self._terminal_retention_sec = terminal_retention_sec
+        self._terminal_cleanup_interval_sec = terminal_cleanup_interval_sec
+        self._orphan_timeout_sec = orphan_timeout_sec
+        self._orphan_scan_interval_sec = orphan_scan_interval_sec
         self._waiting_by_blocker: dict[str, str] = {}
         self._timeout_tasks: dict[str, asyncio.Task[None]] = {}
+        self._terminal_cleanup_task: asyncio.Task[None] | None = None
+        self._orphan_scan_task: asyncio.Task[None] | None = None
 
     async def start(self, bus: EventBus) -> None:
         self._bus = bus
         bus.subscribe("system.health_changed", self._handle_health_changed)
+        bus.subscribe_pattern("*", self._handle_action_activity)
+        if self._terminal_cleanup_task is None and self._terminal_cleanup_interval_sec > 0:
+            self._terminal_cleanup_task = asyncio.create_task(self._terminal_cleanup_loop())
+        if self._orphan_scan_task is None and self._orphan_timeout_sec > 0:
+            self._orphan_scan_task = asyncio.create_task(self._orphan_scan_loop())
+
+    async def stop(self) -> None:
+        for task in (self._terminal_cleanup_task, self._orphan_scan_task):
+            if task is None:
+                continue
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        self._terminal_cleanup_task = None
+        self._orphan_scan_task = None
 
     async def request_action(
         self,
@@ -99,6 +130,7 @@ class ActionManager:
                 resource=resource,
                 action_id=self._resource_locks.get(resource),
             )
+        now = datetime.now(UTC)
         action = Action(
             action_type=action_type,
             payload=payload,
@@ -107,7 +139,8 @@ class ActionManager:
             turn_id=turn_id,
             source_module=source_module,
             status=ActionStatus.RUNNING,
-            started_at=datetime.now(UTC),
+            started_at=now,
+            last_activity_at=now,
         )
         self._actions[action.action_id] = action
         if resource != "none":
@@ -121,6 +154,7 @@ class ActionManager:
         action.status = ActionStatus.COMPLETED
         action.result = result
         action.completed_at = datetime.now(UTC)
+        action.last_activity_at = action.completed_at
         self._release_resource(action)
         await self._publish(
             "action.completed",
@@ -135,6 +169,7 @@ class ActionManager:
         action.status = ActionStatus.FAILED
         action.error = error
         action.completed_at = datetime.now(UTC)
+        action.last_activity_at = action.completed_at
         self._release_resource(action)
         await self._publish(
             "action.failed",
@@ -157,6 +192,7 @@ class ActionManager:
         self._cancel_timeout(action_id)
         action.status = ActionStatus.CANCELLED
         action.completed_at = datetime.now(UTC)
+        action.last_activity_at = action.completed_at
         self._release_resource(action)
         await self._publish(
             "action.cancelled",
@@ -173,6 +209,7 @@ class ActionManager:
             if action.status not in {ActionStatus.RUNNING, ActionStatus.RUNNING_DETACHED}:
                 continue
             action.status = ActionStatus.PREEMPTING
+            action.last_activity_at = datetime.now(UTC)
             preempted.append(action.action_id)
             await self._publish(
                 "action.preempt_requested",
@@ -189,6 +226,7 @@ class ActionManager:
         self._cancel_timeout(action_id)
         action.status = ActionStatus.PREEMPTED
         action.completed_at = datetime.now(UTC)
+        action.last_activity_at = action.completed_at
         self._release_resource(action)
         await self._publish(
             "action.preempted",
@@ -200,6 +238,7 @@ class ActionManager:
     async def mark_detached(self, action_id: str, reason: str = "client_timeout") -> None:
         action = self._actions[action_id]
         action.status = ActionStatus.RUNNING_DETACHED
+        action.last_activity_at = datetime.now(UTC)
         await self._publish(
             "action.detached",
             action,
@@ -220,7 +259,13 @@ class ActionManager:
             await self.fail_action(action_id, {"reason": "module_crashed"})
 
     def get_action(self, action_id: str) -> Action | None:
-        return self._actions.get(action_id)
+        action = self._actions.get(action_id)
+        if action is not None:
+            return action
+        for recent in reversed(self._recent_terminal):
+            if recent.action_id == action_id:
+                return recent
+        return None
 
     def get_running_actions(self, resource: str | None = None) -> list[Action]:
         active_statuses = {
@@ -239,7 +284,10 @@ class ActionManager:
         action_id = self._resource_locks.get(resource)
         if action_id is None:
             return False
-        action = self._actions[action_id]
+        action = self._actions.get(action_id)
+        if action is None:
+            self._resource_locks.pop(resource, None)
+            return False
         return action.status in {
             ActionStatus.RUNNING,
             ActionStatus.RUNNING_DETACHED,
@@ -272,8 +320,9 @@ class ActionManager:
                 resource=resource,
                 action_id=current_id,
             )
-        current.status = ActionStatus.PREEMPTING
         now = datetime.now(UTC)
+        current.status = ActionStatus.PREEMPTING
+        current.last_activity_at = now
         action = Action(
             action_type=action_type,
             payload=payload,
@@ -284,6 +333,7 @@ class ActionManager:
             status=ActionStatus.WAITING_RESOURCE,
             waiting_for_action_id=current_id,
             waiting_deadline=now + timedelta(seconds=self._preemption_timeout_sec),
+            last_activity_at=now,
         )
         self._actions[action.action_id] = action
         self._waiting_by_blocker[current_id] = action.action_id
@@ -309,6 +359,7 @@ class ActionManager:
             return
         action.status = ActionStatus.FAILED
         action.completed_at = datetime.now(UTC)
+        action.last_activity_at = action.completed_at
         action.error = {
             "reason": "resource_preemption_timeout",
             "waiting_for_action_id": waiting_for_action_id,
@@ -332,6 +383,7 @@ class ActionManager:
             return
         action.status = ActionStatus.CANCELLED
         action.completed_at = datetime.now(UTC)
+        action.last_activity_at = action.completed_at
         self._release_resource(action)
         await self._publish(
             "action.cancelled",
@@ -348,6 +400,7 @@ class ActionManager:
             return
         action.status = ActionStatus.PREEMPTED
         action.completed_at = datetime.now(UTC)
+        action.last_activity_at = action.completed_at
         self._release_resource(action)
         await self._publish(
             "action.preempted",
@@ -370,6 +423,7 @@ class ActionManager:
             action.status = ActionStatus.FAILED
             action.error = {"reason": "resource_busy_after_preemption"}
             action.completed_at = datetime.now(UTC)
+            action.last_activity_at = action.completed_at
             await self._publish(
                 "action.failed",
                 action,
@@ -378,6 +432,7 @@ class ActionManager:
             return
         action.status = ActionStatus.RUNNING
         action.started_at = datetime.now(UTC)
+        action.last_activity_at = action.started_at
         if action.resource != "none":
             self._resource_locks[action.resource] = action.action_id
         await self._publish_action_started(action)
@@ -387,6 +442,69 @@ class ActionManager:
         if task is None or task is asyncio.current_task():
             return
         task.cancel()
+
+    async def prune_terminal_actions(self) -> None:
+        now = datetime.now(UTC)
+        stale_action_ids = [
+            action.action_id
+            for action in self._actions.values()
+            if _is_terminal(action.status)
+            and action.completed_at is not None
+            and (now - action.completed_at).total_seconds() >= self._terminal_retention_sec
+        ]
+        for action_id in stale_action_ids:
+            action = self._actions.pop(action_id, None)
+            if action is None:
+                continue
+            self._release_resource(action)
+            self._recent_terminal.append(action)
+        stale_locks = [
+            resource
+            for resource, action_id in self._resource_locks.items()
+            if action_id not in self._actions
+        ]
+        for resource in stale_locks:
+            self._resource_locks.pop(resource, None)
+
+    async def _terminal_cleanup_loop(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep(self._terminal_cleanup_interval_sec)
+                await self.prune_terminal_actions()
+        except asyncio.CancelledError:
+            return
+
+    async def _orphan_scan_loop(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep(self._orphan_scan_interval_sec)
+                await self.fail_orphan_actions()
+        except asyncio.CancelledError:
+            return
+
+    async def fail_orphan_actions(self) -> None:
+        now = datetime.now(UTC)
+        orphan_ids = [
+            action.action_id
+            for action in self._actions.values()
+            if action.status is ActionStatus.RUNNING
+            and action.started_at is not None
+            and _has_no_module_activity(action)
+            and (now - action.started_at).total_seconds() >= self._orphan_timeout_sec
+        ]
+        for action_id in orphan_ids:
+            action = self._actions.get(action_id)
+            if action is None or action.status is not ActionStatus.RUNNING:
+                continue
+            await self.fail_action(action_id, {"reason": "orphan_timeout"})
+
+    async def _handle_action_activity(self, event: Event) -> None:
+        if event.source == "action_manager" or event.action_id is None:
+            return
+        action = self._actions.get(event.action_id)
+        if action is None or action.status is not ActionStatus.RUNNING:
+            return
+        action.last_activity_at = event.occurred_at
 
     async def _publish_action_started(self, action: Action) -> None:
         await self._publish(
@@ -413,3 +531,18 @@ class ActionManager:
                 payload=payload,
             )
         )
+
+
+def _is_terminal(status: ActionStatus) -> bool:
+    return status in {
+        ActionStatus.COMPLETED,
+        ActionStatus.FAILED,
+        ActionStatus.CANCELLED,
+        ActionStatus.PREEMPTED,
+    }
+
+
+def _has_no_module_activity(action: Action) -> bool:
+    if action.last_activity_at is None or action.started_at is None:
+        return True
+    return action.last_activity_at <= action.started_at
