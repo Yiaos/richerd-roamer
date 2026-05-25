@@ -81,6 +81,31 @@ async def test_person_detected_upserts_without_duplicates() -> None:
 
 
 @pytest.mark.asyncio
+async def test_person_update_without_name_preserves_existing_identity() -> None:
+    bus = EventBus()
+    model = WorldModel()
+    await model.start(bus)
+
+    await bus.publish(
+        make_event(
+            "vision.person_detected",
+            {"person_id": "richerd", "name": "Richerd", "confidence": 0.8},
+        )
+    )
+    await bus.publish(
+        make_event(
+            "vision.person_detected",
+            {"person_id": "richerd", "confidence": 0.9, "position_hint": "desk"},
+        )
+    )
+    await bus.run_until_idle()
+
+    [person] = model.get_people_present()
+    assert person.name == "Richerd"
+    assert person.position_hint == "desk"
+
+
+@pytest.mark.asyncio
 async def test_unknown_person_gets_temp_id_and_ttl_filters_presence() -> None:
     bus = EventBus()
     model = WorldModel()

@@ -182,9 +182,10 @@ class WorldModel:
     def _upsert_person(self, event: Event) -> None:
         person_id = _str_payload(event, "person_id") or f"unknown-{uuid4().hex[:8]}"
         existing = self._state.people_present.get(person_id)
+        name = _str_payload(event, "name")
         self._state.people_present[person_id] = PersonPresence(
             person_id=person_id,
-            name=_str_payload(event, "name") if existing is None else _str_payload(event, "name"),
+            name=name if name is not None else (existing.name if existing is not None else None),
             identity_confidence=_float_payload(event, "confidence") or 0.0,
             position_hint=_str_payload(event, "position_hint"),
             last_seen_at=event.occurred_at,

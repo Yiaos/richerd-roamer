@@ -17,7 +17,7 @@ class MotionStarted(BaseModel):
     EVENT_TYPE: ClassVar[Literal["motion.started"]] = "motion.started"
 
     action_id: str
-    target: dict[str, float] | None = None
+    action_type: str
 
 
 class MotionCompleted(BaseModel):
@@ -26,6 +26,9 @@ class MotionCompleted(BaseModel):
 
     action_id: str
     status: str
+    x: float | None = None
+    y: float | None = None
+    angle: float | None = None
 
 
 class MotionFailed(BaseModel):
@@ -33,7 +36,6 @@ class MotionFailed(BaseModel):
     EVENT_TYPE: ClassVar[Literal["motion.failed"]] = "motion.failed"
 
     action_id: str
-    error_code: str
     message: str
 
 

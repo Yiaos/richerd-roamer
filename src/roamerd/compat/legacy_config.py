@@ -29,10 +29,8 @@ def migrate_legacy_config(path: Path) -> tuple[RoamerdConfig, MigrationReport]:
         mapped_keys=mapped_keys,
         ignored_keys={
             "converse.discord": "Discord bridge settings moved to telegram bridge compatibility.",
-            "converse.endpoint": "Endpoint tuning is folded into hearing session/VAD config.",
             "converse.intents": "Legacy intent seeds are replaced by policy.local_intents.",
             "funasr.disable_update": "Model package update behavior is outside roamerd runtime.",
-            "logging": "Logging policy is handled by the roamerd observability layer.",
             "valetudo.http_moved_to_ros2": (
                 "Valetudo HTTP config is consumed by the ROS 2 bridge, not roamerd motion."
             ),
@@ -50,6 +48,7 @@ def migrate_legacy_config(path: Path) -> tuple[RoamerdConfig, MigrationReport]:
     _map_motion(config, legacy_config)
     _map_bridges(config, legacy_config)
     _map_runtime(config, legacy_config)
+    _map_logging(config, legacy_config)
     _map_ros2(config, legacy_config)
     return config, report
 
@@ -175,6 +174,10 @@ def _map_hearing(config: RoamerdConfig, legacy: Mapping[str, object]) -> None:
         config.capabilities.hearing.stt.provider,
         {"vllm_realtime": "network_asr"},
     )
+    endpoint = _section(converse, "endpoint")
+    config.capabilities.hearing.endpoint = config.capabilities.hearing.endpoint.model_copy(
+        update=cast(Mapping[str, Any], endpoint)
+    )
 
 
 def _map_vision(config: RoamerdConfig, legacy: Mapping[str, object]) -> None:
@@ -217,6 +220,12 @@ def _map_runtime(config: RoamerdConfig, legacy: Mapping[str, object]) -> None:
     runtime = _section(legacy, "runtime")
     config.runtime.state_dir = _string(runtime.get("state_dir"), "/run/roamer")
     config.runtime.playback_stale_after_sec = _float(runtime.get("playback_stale_after_sec"), 120.0)
+
+
+def _map_logging(config: RoamerdConfig, legacy: Mapping[str, object]) -> None:
+    logging = _section(legacy, "logging")
+    if logging:
+        config.logging = config.logging.model_copy(update=cast(Mapping[str, Any], logging))
 
 
 def _map_ros2(config: RoamerdConfig, legacy: Mapping[str, object]) -> None:

@@ -12,6 +12,9 @@ from roamerd.kernel.action_manager import ActionStatus
 
 
 class FakeCameraDriver:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+
     async def capture(
         self,
         output_path: Path,
@@ -19,6 +22,8 @@ class FakeCameraDriver:
         width: int | None = None,
         height: int | None = None,
     ) -> CaptureResult:
+        if self.fail:
+            raise RuntimeError("camera unavailable")
         return CaptureResult(
             path=output_path,
             timestamp=datetime.now(UTC),
@@ -101,3 +106,33 @@ async def test_vision_module_captures_watch_action(tmp_path: Path) -> None:
     assert await module.health_check() == "healthy"
     assert events[0].payload["path"] == str(tmp_path / f"{action.action_id}.jpg")
     assert actions.get_action(action.action_id).status is ActionStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_vision_module_camera_unavailable_fails_action(tmp_path: Path) -> None:
+    bus = EventBus()
+    actions = ActionManager()
+    module = VisionModule(
+        camera=FakeCameraDriver(fail=True),
+        action_manager=actions,
+        output_dir=tmp_path,
+        session_id="session-1",
+    )
+    events: list[Event] = []
+
+    async def handler(event: Event) -> None:
+        events.append(event)
+
+    bus.subscribe("vision.capture_failed", handler)
+    await actions.start(bus)
+    await module.start(bus)
+    action = await actions.request_action("watch", {}, resource="camera", source_module="vision")
+    assert not isinstance(action, ActionRequestError)
+
+    await bus.run_until_idle()
+
+    assert events[0].payload == {
+        "error_code": "CAPTURE_FAILED",
+        "message": "camera unavailable",
+    }
+    assert actions.get_action(action.action_id).status is ActionStatus.FAILED

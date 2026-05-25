@@ -19,8 +19,8 @@ class FakeWakewordDriver:
     async def wait_for_wake(self) -> WakeEvent:
         return await self._queue.get()
 
-    async def emit(self, wakeword: str = "小乐小乐") -> None:
-        await self._queue.put(WakeEvent(wakeword=wakeword, confidence=0.95))
+    async def emit(self, wakeword: str = "小乐小乐", *, follow_up: bool = False) -> None:
+        await self._queue.put(WakeEvent(wakeword=wakeword, confidence=0.95, follow_up=follow_up))
 
 
 class FakeCaptureDriver:
@@ -127,7 +127,7 @@ async def test_wake_records_and_publishes_transcript_ready() -> None:
     await module.start(bus)
     runner = asyncio.create_task(bus.run())
 
-    await wakeword.emit()
+    await wakeword.emit(follow_up=True)
     while not any(event.event_type == "hearing.transcript_ready" for event in events):
         await asyncio.sleep(0.01)
 
@@ -142,6 +142,7 @@ async def test_wake_records_and_publishes_transcript_ready() -> None:
         "hearing.transcript_ready",
     ]
     transcript = events[-1]
+    assert events[0].payload["follow_up"] is True
     assert transcript.payload["text"] == "回充电"
     assert transcript.payload["follow_up_eligible"] is True
     assert transcript.payload["fallback_eligible"] is True

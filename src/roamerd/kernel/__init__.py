@@ -20,9 +20,11 @@ from roamerd.kernel.state_manager import (
     AudioState,
     HealthState,
     MotionState,
-    Position,
     RuntimeState,
     StateManager,
+)
+from roamerd.kernel.state_manager import (
+    Position as RuntimePosition,
 )
 from roamerd.kernel.world_model import (
     DetectedObject,
@@ -36,6 +38,9 @@ from roamerd.kernel.world_model import (
 from roamerd.kernel.world_model import (
     Position as WorldPosition,
 )
+
+# Backward-compatible alias; new code should prefer RuntimePosition or WorldPosition.
+Position = RuntimePosition
 
 __all__ = [
     "AudioState",
@@ -52,13 +57,13 @@ __all__ = [
     "LocalIntentMatch",
     "MotionState",
     "PersonPresence",
-    "Position",
     "Place",
     "PolicyDecision",
     "PolicyEngine",
     "PolicyRuleStore",
     "PreemptionScope",
     "RuntimeState",
+    "RuntimePosition",
     "SceneState",
     "StateManager",
     "Subscription",

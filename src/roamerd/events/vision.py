@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from roamerd.types import JSONDict
 
 
 class ImageCaptured(BaseModel):
@@ -18,8 +20,8 @@ class SceneObserved(BaseModel):
     model_config = ConfigDict(extra="forbid")
     EVENT_TYPE: ClassVar[Literal["vision.scene_observed"]] = "vision.scene_observed"
 
-    summary: str
-    confidence: float | None = None
+    description: str | None = None
+    objects: list[JSONDict] = Field(default_factory=list)
 
 
 class PersonDetected(BaseModel):
@@ -27,8 +29,10 @@ class PersonDetected(BaseModel):
     EVENT_TYPE: ClassVar[Literal["vision.person_detected"]] = "vision.person_detected"
 
     person_id: str | None = None
-    label: str | None = None
+    name: str | None = None
     confidence: float | None = None
+    position_hint: str | None = None
+    source: str | None = None
 
 
 class CaptureFailed(BaseModel):

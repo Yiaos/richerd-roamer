@@ -112,7 +112,14 @@ def create_app(config: RoamerdConfig) -> RoamerdApp:
         rules=PolicyRuleStore.from_config(config.policy.local_intents),
     )
     logger = TraceLogger(
-        TraceLoggerConfig(log_dir=Path("logs")),
+        TraceLoggerConfig(
+            log_dir=Path(config.logging.dir),
+            max_bytes=config.logging.max_bytes,
+            backup_count=config.logging.backup_count,
+            retention_days=config.logging.retention_days,
+            log_transcripts=config.logging.log_transcripts,
+            log_audio_paths=config.logging.log_audio_paths,
+        ),
         session_id=session_id,
     )
     supervisor = Supervisor(bus)

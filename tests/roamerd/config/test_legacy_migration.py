@@ -8,8 +8,12 @@ def test_legacy_config_migration_maps_current_config() -> None:
 
     assert report.unmapped_leaf_keys == []
     assert config.capabilities.hearing.vad.silero.threshold == 0.1
+    assert config.capabilities.hearing.endpoint.max_record_sec == 10.0
+    assert config.capabilities.hearing.stt.chunk_duration_sec == 0.1
     assert config.capabilities.hearing.session.max_turns == 1
     assert config.bridges.control.socket == "/run/roamer/roamer.sock"
+    assert config.logging.max_bytes == 10485760
+    assert config.logging.log_audio_paths is False
     assert config.capabilities.motion.driver == "ros2_nav"
     assert config.ros2.valetudo_bridge.host == "10.0.0.226"
     assert config.world_model.places["阳台"].x == 2082.0

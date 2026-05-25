@@ -327,3 +327,18 @@ def test_create_app_uses_policy_config_for_intent_catalog() -> None:
     )
 
     assert app.policy_engine.match_local_intent("现在报时").intent_name == "custom_ping"
+
+
+def test_create_app_uses_logging_config(tmp_path) -> None:
+    from roamerd.app import create_app
+
+    app = create_app(
+        RoamerdConfig.model_validate(
+            {"logging": {"dir": str(tmp_path), "log_transcripts": False, "log_audio_paths": False}}
+        )
+    )
+
+    try:
+        assert app.observability.log_dir == tmp_path
+    finally:
+        app.observability.close()

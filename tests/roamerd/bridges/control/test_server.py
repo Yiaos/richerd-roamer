@@ -27,6 +27,28 @@ async def test_control_bridge_server_roundtrip_and_socket_permissions() -> None:
 
 
 @pytest.mark.asyncio
+async def test_control_bridge_handles_concurrent_clients() -> None:
+    socket_dir = Path(tempfile.mkdtemp(prefix="roamerd-", dir="/tmp"))
+    socket_path = socket_dir / "roamer.sock"
+    server = ControlBridgeServer(socket_path=socket_path, router=StaticRouter({"pong": True}))
+    await server.start()
+    try:
+        responses = await asyncio.gather(
+            *[
+                ControlClient(socket_path).request(
+                    RequestEnvelope(request_id=f"req-{index}", op="ping")
+                )
+                for index in range(5)
+            ]
+        )
+    finally:
+        await server.stop()
+
+    assert [response.request_id for response in responses] == [f"req-{index}" for index in range(5)]
+    assert all(response.result == {"pong": True} for response in responses)
+
+
+@pytest.mark.asyncio
 async def test_control_bridge_refuses_to_unlink_active_socket() -> None:
     socket_dir = Path(tempfile.mkdtemp(prefix="roamerd-", dir="/tmp"))
     socket_path = socket_dir / "roamer.sock"

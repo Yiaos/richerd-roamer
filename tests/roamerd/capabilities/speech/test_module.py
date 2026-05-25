@@ -28,13 +28,16 @@ class FakePlaybackDriver:
 
 
 class FakeBluetoothDriver:
-    def __init__(self) -> None:
+    def __init__(self, *, fail_connect: bool = False) -> None:
         self.connected = False
+        self.fail_connect = fail_connect
 
     async def status(self) -> str:
         return "connected" if self.connected else "disconnected"
 
     async def connect(self) -> None:
+        if self.fail_connect:
+            raise RuntimeError("bluetooth unavailable")
         self.connected = True
 
     async def disconnect(self) -> None:
@@ -147,3 +150,44 @@ async def test_playback_failure_fails_action_and_releases_speaker(tmp_path: Path
     assert actions.get_action(action.action_id).status is ActionStatus.FAILED
     assert speech_events[-1].event_type == "speech.playback_failed"
     assert not isinstance(next_action, ActionRequestError)
+
+
+@pytest.mark.asyncio
+async def test_bluetooth_connect_failure_fails_action_before_playback(tmp_path: Path) -> None:
+    bus = EventBus()
+    actions = ActionManager()
+    playback = FakePlaybackDriver()
+    module = SpeechModule(
+        tts=FakeTtsDriver(),
+        playback=playback,
+        bluetooth=FakeBluetoothDriver(fail_connect=True),
+        action_manager=actions,
+        output_dir=tmp_path,
+        session_id="session-1",
+        bluetooth_timeout_sec=0.01,
+    )
+    speech_events: list[Event] = []
+
+    async def handler(event: Event) -> None:
+        speech_events.append(event)
+
+    bus.subscribe_pattern("speech.*", handler)
+    await actions.start(bus)
+    await module.start(bus)
+    action = await actions.request_action(
+        "speech.speak",
+        {"text": "你好"},
+        resource="speaker",
+        source_module="speech",
+    )
+    assert not isinstance(action, ActionRequestError)
+
+    await bus.run_until_idle()
+
+    assert playback.played == []
+    assert actions.get_action(action.action_id).status is ActionStatus.FAILED
+    assert [event.event_type for event in speech_events] == [
+        "speech.synthesis_started",
+        "speech.playback_failed",
+    ]
+    assert "bluetooth unavailable" in str(actions.get_action(action.action_id).error)

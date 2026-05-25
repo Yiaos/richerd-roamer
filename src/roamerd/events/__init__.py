@@ -27,7 +27,11 @@ from roamerd.events.hearing import (
     TranscriptReady,
     WakeTriggered,
 )
-from roamerd.events.memory import MemoryCandidateRaised, PolicyUpdate
+
+# Typed payload classes are the canonical schema contracts for module/bridge payloads.
+# Producers still publish generic Event envelopes during the cutover; tests keep these
+# typed schemas aligned with the payloads emitted by the current string-based path.
+from roamerd.events.memory import MemoryCandidateRaised, MemoryFlushFailed, PolicyUpdate
 from roamerd.events.motion import (
     MotionCompleted,
     MotionFailed,
@@ -89,6 +93,7 @@ __all__ = [
     "ImageCaptured",
     "ListenFailed",
     "MemoryCandidateRaised",
+    "MemoryFlushFailed",
     "ModuleReady",
     "MotionCompleted",
     "MotionFailed",

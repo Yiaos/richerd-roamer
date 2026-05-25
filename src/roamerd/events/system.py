@@ -39,6 +39,7 @@ class HealthChanged(BaseModel):
 
     component: str
     status: str
+    kind: str | None = None
 
 
 class HandlerTimeout(BaseModel):
@@ -62,4 +63,4 @@ class WatchdogTriggered(BaseModel):
     model_config = ConfigDict(extra="forbid")
     EVENT_TYPE: ClassVar[Literal["system.watchdog_triggered"]] = "system.watchdog_triggered"
 
-    reason: str
+    stalled_for_sec: float

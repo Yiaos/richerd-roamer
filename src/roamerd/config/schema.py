@@ -104,6 +104,14 @@ class HearingSessionConfig(StrictModel):
     no_sound_default: bool = False
 
 
+class EndpointConfig(StrictModel):
+    mode: str = "vad_endpoint"
+    silence_sec: float = 1.5
+    min_speech_sec: float = 0.2
+    max_record_sec: float = 10.0
+    pre_speech_padding_sec: float = 0.3
+
+
 class HearingConfig(StrictModel):
     audio: DriverConfig = Field(default_factory=DriverConfig)
     alsa: AlsaConfig = Field(default_factory=AlsaConfig)
@@ -111,6 +119,7 @@ class HearingConfig(StrictModel):
     stt: SttConfig = Field(default_factory=SttConfig)
     wakeword: WakewordConfig = Field(default_factory=WakewordConfig)
     session: HearingSessionConfig = Field(default_factory=HearingSessionConfig)
+    endpoint: EndpointConfig = Field(default_factory=EndpointConfig)
 
 
 class TtsConfig(StrictModel):
@@ -204,6 +213,17 @@ class PolicyConfig(StrictModel):
     local_intents: list[IntentConfig] = Field(default_factory=lambda: _default_intents())
 
 
+class LoggingConfig(StrictModel):
+    enabled: bool = True
+    level: str = "INFO"
+    dir: str = "logs"
+    max_bytes: int = 10 * 1024 * 1024
+    backup_count: int = 10
+    retention_days: int = 3
+    log_transcripts: bool = True
+    log_audio_paths: bool = False
+
+
 class RoamerdConfig(StrictModel):
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     kernel: KernelConfig = Field(default_factory=KernelConfig)
@@ -212,6 +232,7 @@ class RoamerdConfig(StrictModel):
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
     world_model: WorldModelConfig = Field(default_factory=WorldModelConfig)
     ros2: Ros2Config = Field(default_factory=Ros2Config)
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
 
 def _default_intents() -> list[IntentConfig]:
