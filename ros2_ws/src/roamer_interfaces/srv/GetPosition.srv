@@ -1,0 +1,9 @@
+---
+float64 x
+float64 y
+float64 angle
+float64 state_age_ms
+string map_id
+string map_hash
+string error_code
+string error_message

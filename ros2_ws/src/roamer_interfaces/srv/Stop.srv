@@ -1,0 +1,5 @@
+string reason
+---
+bool stopped
+string error_code
+string error_message

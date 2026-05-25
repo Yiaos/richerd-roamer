@@ -1,0 +1,22 @@
+# Development defaults use mock drivers. Pi hardware config is introduced in Phase E.
+runtime:
+  state_dir: /run/roamer
+capabilities:
+  hearing:
+    audio:
+      driver: mock
+    vad:
+      driver: mock
+  speech:
+    playback:
+      driver: mock
+  vision:
+    camera:
+      driver: mock
+  motion:
+    driver: mock_ros2_nav
+bridges:
+  cognition:
+    driver: mock
+  control:
+    socket: /run/roamer/roamer.sock

@@ -1,0 +1,8 @@
+<package format="3">
+  <name>roamer_ros</name>
+  <version>0.1.0</version>
+  <description>Fake ROS 2 motion bridge nodes for local tests.</description>
+  <maintainer email="dev@example.com">roamer</maintainer>
+  <license>MIT</license>
+  <exec_depend>roamer_interfaces</exec_depend>
+</package>

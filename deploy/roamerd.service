@@ -1,0 +1,13 @@
+[Unit]
+Description=Roamer body runtime
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/roamer
+ExecStart=/usr/bin/python -m roamerd --config /opt/roamer/config/roamerd-pi.yaml
+Restart=always
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target
