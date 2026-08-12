@@ -61,3 +61,6 @@ run_capture ros-paths bash -lc "find /opt/ros -maxdepth 2 -name setup.bash -prin
 run_capture python python3 --version
 
 log "done"
+log "backup retained on Pi at: $backup_dir"
+log "before any OS reimage, pull off-device with scripts/roamerd-phase-e-backup-pull.sh"
+log "do NOT copy the backup to /tmp on the host — use a durable path (default ~/Backups/roamer/phase-e)"

@@ -48,3 +48,12 @@ Thumbs.db
 *.jpg
 *.png
 logs/
+
+# Local OpenClaw workspace artifacts
+.openclaw/
+HEARTBEAT.md
+IDENTITY.md
+SOUL.md
+TOOLS.md
+USER.md
+MEMORY.md

@@ -2,6 +2,21 @@
 
 Status: HARDWARE-EXCLUDED in this local workspace. This document is the evidence template for the Pi 5 cutover run.
 
+## Operator gate (2026-08-13)
+
+Heartbeat check found:
+
+- Pi `roamer` is offline (Tailscale ping/SSH timeout).
+- The earlier off-device copy under `/tmp/roamerd-phase-e-backups/` is gone (`/tmp` is not durable).
+- Issue #21 remains the only open software/hardware gate: choose Ubuntu 24.04 + ROS 2 Jazzy, or revise design for Debian 13.
+
+Before any destructive OS work:
+
+1. Power Pi and confirm SSH.
+2. Re-run `scripts/roamerd-pi-collect-phase-e-facts.sh` on the Pi if the on-device backup is missing.
+3. Pull off-device with `scripts/roamerd-phase-e-backup-pull.sh` into `~/Backups/roamer/phase-e/` (never `/tmp`).
+4. Explicitly choose issue #21 path A (reimage Ubuntu 24.04) or path B (Debian 13 + non-deb ROS2 redesign).
+
 ## Happy Path
 
 | Check | Status | Evidence |
